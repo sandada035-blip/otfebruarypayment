@@ -13,16 +13,10 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
   <style>
-    #loginSection { transition: all 0.5s ease; }
-    @media print {
-      body * { visibility: hidden; }
-      #printArea, #printArea * { visibility: visible; }
-      #printArea { position: absolute; left: 0; top: 0; width: 100%; }
-      .no-print { display: none !important; }
-    }
+    /* Search icon inline */
     .search-container { position: relative; }
-    .search-container i { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #6c757d; }
-    .search-input { padding-left: 35px !important; border-radius: 10px; border: 1px solid #e8e8e8; }
+    .search-container i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #6c757d; }
+    .search-input { padding-left: 38px !important; }
   </style>
 </head>
 
@@ -40,6 +34,7 @@
         class="mb-3"
         style="width: 80px; height: 80px; object-fit: contain;"
       />
+
       <h4 class="fw-bold text-primary mb-1 kh-title">ប្រព័ន្ធគ្រប់គ្រងសិស្ស</h4>
       <p class="text-muted small mb-4">សូមបញ្ចូលព័ត៌មានដើម្បីចូលប្រើប្រាស់</p>
 
@@ -88,33 +83,30 @@
   ========================= -->
   <div id="dashboardSection" class="container-fluid p-3 page-wrap">
 
-    <!-- Facebook-like header card -->
     <div class="fb-hero-card mb-3">
-      <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+      <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
         <div class="d-flex align-items-center gap-3">
-          <div class="hero-icon">
-            <i class="bi bi-bar-chart-line"></i>
-          </div>
+          <div class="hero-icon"><i class="bi bi-bar-chart-line"></i></div>
           <div>
             <div class="hero-title">Overview</div>
             <div class="hero-sub">សរុបទិន្នន័យ និងចំណូល (20% សាលា / 80% គ្រូ)</div>
           </div>
         </div>
+
         <div class="d-flex gap-2">
-          <button class="btn btn-sm btn-dark no-print" onclick="printReport()">
+          <!-- View-only users CAN print -->
+          <button class="btn btn-sm btn-dark no-print" onclick="printStudentReportDetailed()">
             <i class="bi bi-printer"></i> Print
           </button>
-          <button class="btn btn-sm btn-outline-primary no-print" onclick="refreshStatsNow()">
+          <button class="btn btn-sm btn-outline-primary no-print" onclick="loadDashboard()">
             <i class="bi bi-arrow-repeat"></i> Refresh
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Stats Cards (Facebook-style) -->
-    <div class="stats-grid" id="statsRow">
-      <!-- JS will render cards here -->
-    </div>
+    <!-- Stats cards -->
+    <div id="statsRow" class="stats-grid"></div>
 
     <!-- Teacher Summary -->
     <div class="content-box mt-4">
@@ -124,18 +116,9 @@
         <div class="d-flex gap-2 align-items-center">
           <div class="search-container">
             <i class="bi bi-search"></i>
-            <input
-              type="text"
-              id="searchTeacher"
-              class="form-control form-control-sm search-input"
-              placeholder="ស្វែងរកឈ្មោះគ្រូ..."
-              onkeyup="filterTeachers()"
-            />
+            <input type="text" id="searchTeacher" class="form-control form-control-sm search-input"
+              placeholder="ស្វែងរកឈ្មោះគ្រូ..." onkeyup="filterTeachers()" />
           </div>
-
-          <button class="btn btn-sm btn-dark" onclick="printReport()">
-            <i class="bi bi-printer"></i> Print
-          </button>
         </div>
       </div>
 
@@ -168,20 +151,17 @@
         <div class="d-flex gap-2 align-items-center">
           <div class="search-container">
             <i class="bi bi-search"></i>
-            <input
-              type="text"
-              id="searchStudent"
-              class="form-control form-control-sm search-input"
-              placeholder="ស្វែងរកឈ្មោះសិស្ស..."
-              onkeyup="filterStudents()"
-            />
+            <input type="text" id="searchStudent" class="form-control form-control-sm search-input"
+              placeholder="ស្វែងរកឈ្មោះសិស្ស..." onkeyup="filterStudents()" />
           </div>
 
-          <button class="btn btn-outline-dark btn-sm" onclick="printReport()">
+          <!-- View-only users CAN print -->
+          <button class="btn btn-outline-dark btn-sm" onclick="printStudentReportDetailed()">
             <i class="bi bi-printer"></i> Print
           </button>
 
-          <button class="btn btn-primary btn-sm" onclick="openStudentModal()">+ Add New</button>
+          <!-- Admin only -->
+          <button class="btn btn-primary btn-sm admin-only" onclick="openStudentModal()">+ Add New</button>
         </div>
       </div>
 
@@ -190,8 +170,8 @@
           <thead>
             <tr>
               <th>ឈ្មោះ</th>
-              <th>ភេទ</th>
-              <th>ថ្នាក់</th>
+              <th class="d-none d-md-table-cell">ភេទ</th>
+              <th class="d-none d-md-table-cell">ថ្នាក់</th>
               <th>គ្រូ</th>
               <th>តម្លៃ</th>
               <th>សកម្មភាព</th>
@@ -207,7 +187,8 @@
     </div>
   </div>
 
-  <button id="fabBtn" class="fab-btn no-print" onclick="openStudentModal()">
+  <!-- Admin-only FAB -->
+  <button id="fabBtn" class="fab-btn no-print admin-only" onclick="openStudentModal()">
     <i class="bi bi-plus-lg"></i>
   </button>
 </div>
@@ -224,8 +205,6 @@
       </div>
 
       <div class="modal-body p-4">
-        <input type="hidden" id="editOriginalName" />
-
         <div class="form-floating mb-3">
           <input type="text" id="addStudentName" class="form-control" />
           <label>ឈ្មោះសិស្ស</label>
@@ -293,7 +272,7 @@
         </div>
 
         <div class="form-floating mb-3">
-          <input type="number" id="addFee" class="form-control" oninput="updateFeeSplitPreview()" />
+          <input type="number" id="addFee" class="form-control" />
           <label>តម្លៃសិក្សា</label>
         </div>
 
@@ -308,7 +287,13 @@
           </div>
         </div>
 
-        <button id="submitBtn" class="btn btn-primary w-100 py-3 fw-bold" onclick="submitStudent()">រក្សាទុក</button>
+        <button id="submitBtn" class="btn btn-primary w-100 py-3 fw-bold admin-only" onclick="submitStudent()">
+          រក្សាទុក
+        </button>
+
+        <div class="text-muted small text-center mt-2 user-note d-none">
+          User អាចមើលបានតែប៉ុណ្ណោះ
+        </div>
       </div>
     </div>
   </div>
