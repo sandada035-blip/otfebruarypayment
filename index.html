@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>School Admin Pro - Preah Reach Akk Mohessey</title>
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
@@ -21,19 +21,19 @@
     <div class="card-body text-center">
       <img
         src="https://blogger.googleusercontent.com/img/a/AVvXsEi33gP-LjadWAMAbW6z8mKj7NUYkZeslEJ4sVFw7WK3o9fQ-JTQFMWEe06xxew4lj7WKpfuk8fadTm5kXo3GSW9jNaQHE8SrCs8_bUFDV8y4TOJ1Zhbu0YKVnWIgL7sTPuEPMrmrtuNqwDPWKHOvy6PStAaSrCz-GpLfsQNyq-BAElq9EI3etjnYsft0Pvo"
-        alt="Logo" class="mb-3" style="width: 80px; height: 80px; object-fit: contain;"
+        alt="Logo" class="mb-3" style="width: 84px; height: 84px; object-fit: contain;"
       />
 
       <h4 class="fw-bold text-primary mb-1 kh-title">ប្រព័ន្ធគ្រប់គ្រងសិស្ស</h4>
       <p class="text-muted small mb-4">សូមបញ្ចូលព័ត៌មានដើម្បីចូលប្រើប្រាស់</p>
 
       <div class="form-floating mb-3">
-        <input type="text" class="form-control" id="username" placeholder="Username" />
+        <input type="text" class="form-control" id="username" placeholder="Username" autocomplete="username" />
         <label><i class="bi bi-person"></i> ឈ្មោះអ្នកប្រើប្រាស់</label>
       </div>
 
       <div class="form-floating mb-4">
-        <input type="password" class="form-control" id="password" placeholder="Password" />
+        <input type="password" class="form-control" id="password" placeholder="Password" autocomplete="current-password" />
         <label><i class="bi bi-lock"></i> ពាក្យសម្ងាត់</label>
       </div>
 
@@ -46,6 +46,8 @@
 
 <!-- ========================= APP ========================= -->
 <div id="mainApp" style="display:none;">
+
+  <!-- TOP NAV (PC + Tablet) -->
   <nav class="app-navbar bg-white p-3 shadow-sm d-flex justify-content-between sticky-top no-print">
     <div class="d-flex align-items-center gap-2">
       <div class="app-badge"><i class="bi bi-grid-fill"></i></div>
@@ -59,16 +61,34 @@
       <span id="roleBadge" class="pill pill-user">USER</span>
       <span id="userBadge" class="pill pill-name"><i class="bi bi-person-circle"></i> -</span>
 
-      <button class="btn btn-sm btn-light" onclick="showSection('dashboard')"><i class="bi bi-house"></i> Home</button>
-      <button class="btn btn-sm btn-light" onclick="showSection('students')"><i class="bi bi-people"></i> Students</button>
+      <button class="btn btn-sm btn-light" onclick="showSection('dashboard')"><i class="bi bi-house"></i> <span class="btn-text">Home</span></button>
+      <button class="btn btn-sm btn-light" onclick="showSection('students')"><i class="bi bi-people"></i> <span class="btn-text">Students</span></button>
       <button class="btn btn-sm btn-outline-danger" onclick="logout()">
-        <i class="bi bi-box-arrow-left"></i> Logout
+        <i class="bi bi-box-arrow-left"></i> <span class="btn-text">Logout</span>
       </button>
     </div>
   </nav>
 
+  <!-- MOBILE BOTTOM NAV (Pro) -->
+  <div class="mobile-nav no-print">
+    <button class="mnav-btn" onclick="showSection('dashboard')" aria-label="Home">
+      <i class="bi bi-house"></i>
+      <span>Home</span>
+    </button>
+
+    <button class="mnav-btn" onclick="showSection('students')" aria-label="Students">
+      <i class="bi bi-people"></i>
+      <span>Students</span>
+    </button>
+
+    <button class="mnav-btn mnav-danger" onclick="logout()" aria-label="Logout">
+      <i class="bi bi-box-arrow-left"></i>
+      <span>Logout</span>
+    </button>
+  </div>
+
   <!-- ========================= DASHBOARD ========================= -->
-  <div id="dashboardSection" class="container-fluid p-3 page-wrap">
+  <div id="dashboardSection" class="container-fluid p-3 page-wrap app-safe-bottom">
 
     <div class="fb-hero-card mb-3">
       <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
@@ -106,7 +126,7 @@
 
     <div id="statsRow" class="stats-grid"></div>
 
-    <!-- Teacher Summary (v2: filter + rowsPerPage + pagination + sort) -->
+    <!-- Teacher Summary -->
     <div class="content-box mt-4">
       <div class="p-3 border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2 no-print">
         <h6 class="fw-bold m-0">Teacher Summary</h6>
@@ -165,7 +185,7 @@
   </div>
 
   <!-- ========================= STUDENTS ========================= -->
-  <div id="studentSection" class="container-fluid p-3 page-wrap" style="display:none;">
+  <div id="studentSection" class="container-fluid p-3 page-wrap app-safe-bottom" style="display:none;">
     <div class="fb-hero-card mb-3">
       <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
         <div class="d-flex align-items-center gap-3">
@@ -229,7 +249,7 @@
       </div>
 
       <!-- Filters row -->
-      <div class="p-3 border-bottom bg-soft">
+      <div class="p-3 border-bottom bg-soft filters-sticky no-print">
         <div class="row g-2">
           <div class="col-12 col-md-4">
             <div class="form-floating">
@@ -318,6 +338,7 @@
   <button id="fabBtn" class="fab-btn no-print admin-only" onclick="openStudentModal()">
     <i class="bi bi-plus-lg"></i>
   </button>
+
 </div>
 
 <!-- ========================= MODAL ========================= -->
@@ -355,44 +376,7 @@
         </div>
 
         <div class="form-floating mb-3">
-          <select id="addTeacherSelect" class="form-select">
-            <option value="កែមលៀងគា">កែមលៀងគា</option>
-            <option value="ប្រាក់ប្រសើ">ប្រាក់ប្រសើ</option>
-            <option value="ស្រេងស្រីម៉ី">ស្រេងស្រីម៉ី</option>
-            <option value="ថាស្បៃរឿង">ថាស្បៃរឿង</option>
-            <option value="ស្រីសុផានី">ស្រីសុផានី</option>
-            <option value="ណុនផាន់ណី">ណុនផាន់ណី</option>
-            <option value="ហមបញ្ញា">ហមបញ្ញា</option>
-            <option value="សុខទិត្យ">សុខទិត្យ</option>
-            <option value="ត្រុយចន្ថា">ត្រុយចន្ថា</option>
-            <option value="ហេងចាន់សុភា">ហេងចាន់សុភា</option>
-            <option value="ហុងសៀវមួយ">ហុងសៀវមួយ</option>
-            <option value="រីចន្ទស្រីចេន">រីចន្ទស្រីចេន</option>
-            <option value="ឈុំរស្មី">ឈុំរស្មី</option>
-            <option value="គីមសារ៉ាន់">គីមសារ៉ាន់</option>
-            <option value="វែនសុវិន">វែនសុវិន</option>
-            <option value="យ៉ែមសំណាង">យ៉ែមសំណាង</option>
-            <option value="ភឺនសុទ្ធវិសិដ្ឋ">ភឺនសុទ្ធវិសិដ្ឋ</option>
-            <option value="នីសុដាវីន">នីសុដាវីន</option>
-            <option value="នីសុវឌ្ឍនា">នីសុវឌ្ឍនា</option>
-            <option value="សំរិតដាវីត">សំរិតដាវីត</option>
-            <option value="មីចាន់រី">មីចាន់រី</option>
-            <option value="ឈិនសុពណ៍នរាយ">ឈិនសុពណ៍នរាយ</option>
-            <option value="ហៀងសោភ័ណ">ហៀងសោភ័ណ</option>
-            <option value="ចេងចាន់កាក់">ចេងចាន់កាក់</option>
-            <option value="ស៊ីមធានី">ស៊ីមធានី</option>
-            <option value="ចក់គាអន">ចក់គាអន</option>
-            <option value="គាម្នីរ័ត្ន">គាម្នីរ័ត្ន</option>
-            <option value="ឃឹមថាវុទ្ធ">ឃឹមថាវុទ្ធ</option>
-            <option value="សុខុមស្រីកា">សុខុមស្រីកា</option>
-            <option value="គឺគុន្នី">គឺគុន្នី</option>
-            <option value="ភឿនសុភក្តី">ភឿនសុភក្តី</option>
-            <option value="សាយផានិត">សាយផានិត</option>
-            <option value="ប៊ុនណៃស្រេង">ប៊ុនណៃស្រេង</option>
-            <option value="យន់ស្រីនិច">យន់ស្រីនិច</option>
-            <option value="លឹមចាន់ថា">លឹមចាន់ថា</option>
-            <option value="អ៊ិតវន្ថា">អ៊ិតវន្ថា</option>
-          </select>
+          <select id="addTeacherSelect" class="form-select"></select>
           <label>ជ្រើសរើសគ្រូ</label>
         </div>
 
@@ -426,6 +410,14 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="script.js"></script>
+
+<script>
+  // Optional: auto-build teacher dropdown list based on filterTeacher after data loaded
+  // If you want to keep your static <option> list, you can remove this.
+  document.addEventListener("DOMContentLoaded", () => {
+    // nothing here by default
+  });
+</script>
+
 </body>
 </html>
-
