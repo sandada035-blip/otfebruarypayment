@@ -1,21 +1,27 @@
 /****************************************************
- * School Admin Pro - script.js (FULL)
- * - User: view-only (Dashboard + Students + Print)
- * - Admin: add/edit/delete + print
+ * School Admin Pro - Pro Pack v1 (FULL)
+ * ✅ Role badge + username
+ * ✅ Last sync times
+ * ✅ Export CSV (Students + Teacher Summary)
+ * ✅ Advanced filters (Teacher/Grade/Gender + Search)
+ * ✅ Quick totals on Students (based on filter)
+ * ✅ Offline cache (LocalStorage)
  ****************************************************/
 
 const WEB_APP_URL =
   "https://script.google.com/macros/s/AKfycbwuOhZPO7OtZxkMGMOMJWJXRAMbR8t5l9TCviVoOHhgjVUVn3kzM2KE1ILnBbkCB21TDg/exec";
 
 let allStudents = [];
+let filteredStudents = [];
+let teacherRows = [];
+
 let currentUserRole = "User";
+let currentUsername = "-";
 
 let isEditMode = false;
 let originalName = "";
 
-/* =========================
-   Helpers
-========================= */
+/* ---------------- Helpers ---------------- */
 function $(id) { return document.getElementById(id); }
 
 function toNumber(val) {
@@ -29,9 +35,63 @@ function formatKHR(n) {
   return x.toLocaleString("en-US") + " ៛";
 }
 
-/* =========================
-   API Core
-========================= */
+function nowStamp() {
+  const d = new Date();
+  return d.toLocaleDateString("km-KH") + " " + d.toLocaleTimeString("km-KH");
+}
+
+function downloadText(filename, text) {
+  const blob = new Blob([text], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvEscape(v) {
+  const s = String(v ?? "");
+  if (/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
+  return s;
+}
+
+function setLastSync(which) {
+  const t = nowStamp();
+  if (which === "dashboard") $("lastSyncDashboard").innerText = t;
+  if (which === "students") $("lastSyncStudents").innerText = t;
+}
+
+/* ---------------- Local Cache ---------------- */
+const CACHE_KEYS = {
+  teachers: "pro_cache_teacherRows_v1",
+  students: "pro_cache_students_v1",
+  teachersTime: "pro_cache_teacherRows_time_v1",
+  studentsTime: "pro_cache_students_time_v1",
+};
+
+function saveCache() {
+  try {
+    localStorage.setItem(CACHE_KEYS.teachers, JSON.stringify(teacherRows));
+    localStorage.setItem(CACHE_KEYS.students, JSON.stringify(allStudents));
+    localStorage.setItem(CACHE_KEYS.teachersTime, new Date().toISOString());
+    localStorage.setItem(CACHE_KEYS.studentsTime, new Date().toISOString());
+  } catch {}
+}
+
+function loadCache() {
+  try {
+    const t = JSON.parse(localStorage.getItem(CACHE_KEYS.teachers) || "[]");
+    const s = JSON.parse(localStorage.getItem(CACHE_KEYS.students) || "[]");
+    if (Array.isArray(t) && t.length) teacherRows = t;
+    if (Array.isArray(s) && s.length) allStudents = s;
+    filteredStudents = allStudents.slice();
+  } catch {}
+}
+
+/* ---------------- API Core ---------------- */
 async function callAPI(funcName, ...args) {
   const url = `${WEB_APP_URL}?func=${funcName}&args=${encodeURIComponent(JSON.stringify(args))}`;
   try {
@@ -43,9 +103,7 @@ async function callAPI(funcName, ...args) {
   }
 }
 
-/* =========================
-   Auth
-========================= */
+/* ---------------- Auth ---------------- */
 async function login() {
   const u = $("username")?.value.trim();
   const p = $("password")?.value.trim();
@@ -64,6 +122,7 @@ async function login() {
 
   if (res && res.success) {
     currentUserRole = res.role || "User";
+    currentUsername = u;
 
     // Hide login / show app
     const loginSec = $("loginSection");
@@ -78,7 +137,7 @@ async function login() {
       icon: "success",
       title: "ជោគជ័យ!",
       text: "អ្នកបានចូលប្រើប្រាស់ដោយជោគជ័យ!",
-      timer: 1800,
+      timer: 1400,
       showConfirmButton: false,
     });
   } else {
@@ -96,7 +155,6 @@ function logout() {
   }).then((result) => {
     if (!result.isConfirmed) return;
 
-    // Reset UI
     const loginSec = $("loginSection");
     loginSec.classList.remove("d-none");
     loginSec.classList.add("d-flex");
@@ -105,47 +163,47 @@ function logout() {
     $("username").value = "";
     $("password").value = "";
 
-    // Reset state
     allStudents = [];
+    filteredStudents = [];
+    teacherRows = [];
     currentUserRole = "User";
+    currentUsername = "-";
   });
 }
 
-/* User permissions:
-   - Admin: can add/edit/delete
-   - User: view-only (still can print) */
+/* User permissions */
 function applyPermissions() {
   const isAdmin = currentUserRole === "Admin";
 
-  // Hide admin-only elements (Add New, FAB, Save button)
+  // Role badge
+  const rb = $("roleBadge");
+  const ub = $("userBadge");
+  if (rb) {
+    rb.innerText = isAdmin ? "ADMIN" : "USER";
+    rb.classList.toggle("pill-admin", isAdmin);
+    rb.classList.toggle("pill-user", !isAdmin);
+  }
+  if (ub) ub.innerHTML = `<i class="bi bi-person-circle"></i> ${currentUsername}`;
+
+  // Hide admin-only elements
   document.querySelectorAll(".admin-only").forEach((el) => {
     el.style.display = isAdmin ? "" : "none";
   });
 
-  // Show note inside modal if user (extra safety)
+  // Modal note
   const note = document.querySelector(".user-note");
   if (note) note.classList.toggle("d-none", isAdmin);
 
-  // Extra protection: block modal open/save for user
+  // Extra safety for User
   if (!isAdmin) {
-    window.openStudentModal = function () {
-      Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
-    };
-    window.editStudent = function () {
-      Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
-    };
-    window.confirmDelete = function () {
-      Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
-    };
-    window.submitStudent = function () {
-      Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
-    };
+    window.openStudentModal = () => Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
+    window.editStudent = () => Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
+    window.confirmDelete = () => Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
+    window.submitStudent = () => Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
   }
 }
 
-/* =========================
-   Navigation
-========================= */
+/* ---------------- Navigation ---------------- */
 function showSection(section) {
   $("dashboardSection").style.display = section === "dashboard" ? "block" : "none";
   $("studentSection").style.display = section === "students" ? "block" : "none";
@@ -154,9 +212,11 @@ function showSection(section) {
   if (section === "students") loadStudents();
 }
 
-/* =========================
-   Search Filters
-========================= */
+async function refreshAll() {
+  await Promise.allSettled([loadDashboard(), loadStudents()]);
+}
+
+/* ---------------- Teacher Search ---------------- */
 function filterTeachers() {
   const filter = ($("searchTeacher")?.value || "").toLowerCase();
   const tr = $("teacherTable")?.getElementsByTagName("tr") || [];
@@ -169,25 +229,7 @@ function filterTeachers() {
   }
 }
 
-function filterStudents() {
-  const filter = ($("searchStudent")?.value || "").toLowerCase();
-  const tr = $("studentTable")?.getElementsByTagName("tr") || [];
-
-  for (let i = 1; i < tr.length; i++) {
-    const tdName = tr[i].getElementsByTagName("td")[0];
-    const tdTeacher = tr[i].getElementsByTagName("td")[3];
-    if (!tdName) continue;
-
-    const nameV = (tdName.textContent || tdName.innerText || "").toLowerCase();
-    const teachV = (tdTeacher?.textContent || tdTeacher?.innerText || "").toLowerCase();
-
-    tr[i].style.display = nameV.includes(filter) || teachV.includes(filter) ? "" : "none";
-  }
-}
-
-/* =========================
-   Dashboard
-========================= */
+/* ---------------- Dashboard ---------------- */
 function renderStatsCards({ totalTeachers, totalStudents, totalFee, teacher80, school20 }) {
   $("statsRow").innerHTML = `
     <div class="stat-card accent-purple">
@@ -221,38 +263,32 @@ function renderStatsCards({ totalTeachers, totalStudents, totalFee, teacher80, s
 }
 
 async function loadDashboard() {
+  // Try API
   const res = await callAPI("getTeacherData");
-  if (!res || !Array.isArray(res.rows)) return;
 
-  // rows expected:
-  // [0]=Teacher, [1]=Sex, [2]=Students, [3]=TotalFee, [4]=80%, [5]=20%
-  let totalStudents = 0;
-  let totalFee = 0;
-  let teacher80 = 0;
-  let school20 = 0;
-
-  res.rows.forEach((r) => {
-    totalStudents += toNumber(r[2]);
-    totalFee += toNumber(r[3]);
-    teacher80 += toNumber(r[4]);
-    school20 += toNumber(r[5]);
-  });
-
-  // fallback if API returns only totalFee
-  if ((teacher80 === 0 && school20 === 0) && totalFee > 0) {
-    teacher80 = totalFee * 0.8;
-    school20 = totalFee * 0.2;
+  if (!res || !Array.isArray(res.rows)) {
+    // fallback cache
+    loadCache();
+    if (teacherRows.length) {
+      renderTeacherTable(teacherRows);
+      computeDashboardFromTeachers(teacherRows);
+      setLastSync("dashboard");
+    } else {
+      Swal.fire("Network", "មិនអាចទាញទិន្នន័យ Dashboard បានទេ។", "warning");
+    }
+    return;
   }
 
-  renderStatsCards({
-    totalTeachers: res.rows.length,
-    totalStudents,
-    totalFee,
-    teacher80,
-    school20
-  });
+  teacherRows = res.rows;
+  renderTeacherTable(teacherRows);
+  computeDashboardFromTeachers(teacherRows);
 
-  $("teacherBody").innerHTML = res.rows.map(r => `
+  setLastSync("dashboard");
+  saveCache();
+}
+
+function renderTeacherTable(rows) {
+  $("teacherBody").innerHTML = rows.map(r => `
     <tr>
       <td>${r[0] ?? ""}</td>
       <td>${r[1] ?? ""}</td>
@@ -264,57 +300,231 @@ async function loadDashboard() {
   `).join("");
 }
 
-/* =========================
-   Students
-========================= */
+function computeDashboardFromTeachers(rows) {
+  let totalStudents = 0, totalFee = 0, teacher80 = 0, school20 = 0;
+
+  rows.forEach((r) => {
+    totalStudents += toNumber(r[2]);
+    totalFee += toNumber(r[3]);
+    teacher80 += toNumber(r[4]);
+    school20 += toNumber(r[5]);
+  });
+
+  // fallback if 80/20 not provided by API
+  if ((teacher80 === 0 && school20 === 0) && totalFee > 0) {
+    teacher80 = totalFee * 0.8;
+    school20 = totalFee * 0.2;
+  }
+
+  renderStatsCards({
+    totalTeachers: rows.length,
+    totalStudents,
+    totalFee,
+    teacher80,
+    school20
+  });
+}
+
+/* ---------------- Students ---------------- */
 async function loadStudents() {
   $("studentLoading")?.classList.remove("d-none");
 
   const res = await callAPI("getStudentData");
 
   $("studentLoading")?.classList.add("d-none");
-  if (!res || !Array.isArray(res.rows)) return;
+
+  if (!res || !Array.isArray(res.rows)) {
+    // fallback cache
+    loadCache();
+    if (allStudents.length) {
+      setupStudentFilterOptions(allStudents);
+      applyStudentFilters();
+      setLastSync("students");
+    } else {
+      Swal.fire("Network", "មិនអាចទាញទិន្នន័យ Students បានទេ។", "warning");
+    }
+    return;
+  }
 
   allStudents = res.rows;
-  renderStudentTable(allStudents);
+  setupStudentFilterOptions(allStudents);
+  applyStudentFilters();
+
+  setLastSync("students");
+  saveCache();
+}
+
+function setupStudentFilterOptions(rows) {
+  // Teacher options
+  const teachers = new Set();
+  const grades = new Set();
+
+  rows.forEach(r => {
+    if (r[3]) teachers.add(String(r[3]).trim());
+    if (r[2]) grades.add(String(r[2]).trim());
+  });
+
+  const teacherSel = $("filterTeacher");
+  const gradeSel = $("filterGrade");
+
+  if (teacherSel) {
+    const list = ["ALL", ...Array.from(teachers).sort((a,b)=>a.localeCompare(b,'km'))];
+    teacherSel.innerHTML = list.map(t => `<option value="${csvEscape(t)}">${t === "ALL" ? "All Teachers" : t}</option>`).join("");
+  }
+
+  if (gradeSel) {
+    const list = ["ALL", ...Array.from(grades).sort((a,b)=>a.localeCompare(b,'km'))];
+    gradeSel.innerHTML = list.map(g => `<option value="${csvEscape(g)}">${g === "ALL" ? "All Grades" : g}</option>`).join("");
+  }
+}
+
+function applyStudentFilters() {
+  const q = ($("searchStudent")?.value || "").toLowerCase().trim();
+  const teacher = ($("filterTeacher")?.value || "ALL");
+  const grade = ($("filterGrade")?.value || "ALL");
+  const gender = ($("filterGender")?.value || "ALL");
+
+  filteredStudents = allStudents.filter(r => {
+    const name = String(r[0] ?? "").toLowerCase();
+    const gen = String(r[1] ?? "");
+    const grd = String(r[2] ?? "");
+    const tch = String(r[3] ?? "");
+
+    const matchQ = !q || name.includes(q) || tch.toLowerCase().includes(q);
+    const matchTeacher = (teacher === "ALL") || (tch === teacher);
+    const matchGrade = (grade === "ALL") || (grd === grade);
+    const matchGender = (gender === "ALL") || (gen === gender);
+
+    return matchQ && matchTeacher && matchGrade && matchGender;
+  });
+
+  renderStudentTable(filteredStudents);
+  renderStudentQuickStats(filteredStudents);
+}
+
+function clearStudentFilters() {
+  $("searchStudent").value = "";
+  if ($("filterTeacher")) $("filterTeacher").value = "ALL";
+  if ($("filterGrade")) $("filterGrade").value = "ALL";
+  if ($("filterGender")) $("filterGender").value = "ALL";
+  applyStudentFilters();
+}
+
+function renderStudentQuickStats(rows) {
+  const count = rows.length;
+  let totalFee = 0;
+
+  rows.forEach(r => totalFee += toNumber(r[4]));
+  const teacher80 = totalFee * 0.8;
+  const school20 = totalFee * 0.2;
+
+  $("studentStatsRow").innerHTML = `
+    <div class="stat-card accent-green">
+      <div class="label">សិស្ស (Filtered)</div>
+      <div class="value">${count.toLocaleString("en-US")}</div>
+      <div class="sub">តាម Filter/ Search</div>
+    </div>
+
+    <div class="stat-card accent-blue">
+      <div class="label">ទឹកប្រាក់ (Filtered)</div>
+      <div class="value" style="color:#16a34a">${formatKHR(totalFee)}</div>
+      <div class="sub">សរុបតាម Filter</div>
+    </div>
+
+    <div class="stat-card accent-purple">
+      <div class="label">គ្រូ 80% (Filtered)</div>
+      <div class="value" style="color:#2563eb">${formatKHR(teacher80)}</div>
+      <div class="sub">គណនា 80%</div>
+    </div>
+
+    <div class="stat-card accent-red">
+      <div class="label">សាលា 20% (Filtered)</div>
+      <div class="value" style="color:#ef4444">${formatKHR(school20)}</div>
+      <div class="sub">គណនា 20%</div>
+    </div>
+  `;
 }
 
 function renderStudentTable(rows) {
   const isAdmin = currentUserRole === "Admin";
 
-  $("studentBody").innerHTML = rows.map((r, i) => `
-    <tr>
-      <td class="fw-bold text-primary">${r[0] ?? ""}</td>
-      <td class="d-none d-md-table-cell">${r[1] ?? ""}</td>
-      <td class="d-none d-md-table-cell">${r[2] ?? ""}</td>
-      <td>${r[3] ?? ""}</td>
-      <td class="text-success small fw-bold">${r[4] ?? ""}</td>
-      <td>
-        <div class="btn-group">
-          <!-- View-only user can print receipt -->
-          <button class="btn btn-sm btn-outline-info" title="វិក្កយបត្រ" onclick="printReceipt(${i})">
-            <i class="bi bi-printer"></i>
-          </button>
+  $("studentBody").innerHTML = rows.map((r) => {
+    const idx = allStudents.indexOf(r); // keep receipt/edit/delete index correct
+    return `
+      <tr>
+        <td class="fw-bold text-primary">${r[0] ?? ""}</td>
+        <td class="d-none d-md-table-cell">${r[1] ?? ""}</td>
+        <td class="d-none d-md-table-cell">${r[2] ?? ""}</td>
+        <td>${r[3] ?? ""}</td>
+        <td class="text-success small fw-bold">${r[4] ?? ""}</td>
+        <td>
+          <div class="btn-group">
+            <button class="btn btn-sm btn-outline-info" title="វិក្កយបត្រ" onclick="printReceipt(${idx})">
+              <i class="bi bi-printer"></i>
+            </button>
 
-          ${
-            isAdmin ? `
-              <button class="btn btn-sm btn-outline-warning" title="កែប្រែ" onclick="editStudent(${i})">
-                <i class="bi bi-pencil"></i>
-              </button>
-              <button class="btn btn-sm btn-outline-danger" title="លុប" onclick="confirmDelete(${i})">
-                <i class="bi bi-trash"></i>
-              </button>
-            ` : ""
-          }
-        </div>
-      </td>
-    </tr>
-  `).join("");
+            ${
+              isAdmin ? `
+                <button class="btn btn-sm btn-outline-warning" title="កែប្រែ" onclick="editStudent(${idx})">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" title="លុប" onclick="confirmDelete(${idx})">
+                  <i class="bi bi-trash"></i>
+                </button>
+              ` : ""
+            }
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
 }
 
-/* =========================
-   Modal + Fee split preview
-========================= */
+/* ---------------- Export CSV ---------------- */
+function exportTeacherCSV() {
+  if (!teacherRows.length) return Swal.fire("Info", "មិនមានទិន្នន័យគ្រូសម្រាប់ Export។", "info");
+
+  const header = ["Teacher", "Gender", "Students", "TotalFee", "Teacher80", "School20"];
+  const lines = [header.join(",")];
+
+  teacherRows.forEach(r => {
+    const row = [
+      csvEscape(r[0]),
+      csvEscape(r[1]),
+      csvEscape(r[2]),
+      csvEscape(r[3]),
+      csvEscape(r[4]),
+      csvEscape(r[5]),
+    ];
+    lines.push(row.join(","));
+  });
+
+  downloadText(`Teacher_Summary_${new Date().toISOString().slice(0,10)}.csv`, lines.join("\n"));
+}
+
+function exportStudentCSV() {
+  const rows = filteredStudents.length ? filteredStudents : allStudents;
+  if (!rows.length) return Swal.fire("Info", "មិនមានទិន្នន័យសិស្សសម្រាប់ Export។", "info");
+
+  const header = ["StudentName", "Gender", "Grade", "Teacher", "Fee", "PaymentDate"];
+  const lines = [header.join(",")];
+
+  rows.forEach(r => {
+    const row = [
+      csvEscape(r[0]),
+      csvEscape(r[1]),
+      csvEscape(r[2]),
+      csvEscape(r[3]),
+      csvEscape(r[4]),
+      csvEscape(r[7]), // paymentDate
+    ];
+    lines.push(row.join(","));
+  });
+
+  downloadText(`Students_${new Date().toISOString().slice(0,10)}.csv`, lines.join("\n"));
+}
+
+/* ---------------- Modal + Fee preview ---------------- */
 function updateFeeSplitPreview() {
   const fee = toNumber($("addFee")?.value);
   $("disp80").innerText = formatKHR(fee * 0.8);
@@ -353,9 +563,7 @@ function editStudent(index) {
   bootstrap.Modal.getOrCreateInstance($("studentModal")).show();
 }
 
-/* =========================
-   CRUD (Admin)
-========================= */
+/* ---------------- CRUD (Admin) ---------------- */
 async function submitStudent() {
   if (currentUserRole !== "Admin") {
     return Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
@@ -394,8 +602,7 @@ async function submitStudent() {
   if (res && res.success) {
     Swal.fire("ជោគជ័យ", res.message || "រក្សាទុកបានសម្រេច", "success");
     bootstrap.Modal.getOrCreateInstance($("studentModal")).hide();
-    await loadStudents();
-    await loadDashboard();
+    await refreshAll();
   } else {
     Swal.fire("Error", res?.message || "រក្សាទុកមិនបានសម្រេច", "error");
   }
@@ -425,25 +632,23 @@ async function confirmDelete(index) {
 
     if (res && res.success) {
       Swal.fire("Deleted!", res.message || "លុបបានសម្រេច", "success");
-      await loadStudents();
-      await loadDashboard();
+      await refreshAll();
     } else {
       Swal.fire("Error", res?.message || "លុបមិនបានសម្រេច", "error");
     }
   });
 }
 
-/* =========================
-   Print: Detailed report
-========================= */
+/* ---------------- Print: Detailed report ---------------- */
 function printStudentReportDetailed() {
-  const printWindow = window.open("", "", "height=900,width=1100");
+  const rows = filteredStudents.length ? filteredStudents : allStudents;
 
-  const totalStudents = allStudents.length;
-  const totalFemale = allStudents.filter((s) => s[1] === "Female" || s[1] === "ស្រី").length;
+  const printWindow = window.open("", "", "height=900,width=1100");
+  const totalStudents = rows.length;
+  const totalFemale = rows.filter((s) => s[1] === "Female" || s[1] === "ស្រី").length;
 
   let totalFee = 0;
-  const tableRows = allStudents.map((r) => {
+  const tableRows = rows.map((r) => {
     const feeNum = toNumber(r[4]);
     totalFee += feeNum;
 
@@ -451,9 +656,7 @@ function printStudentReportDetailed() {
     const schoolPart = feeNum * 0.2;
 
     let payDate = r[7];
-    if (!payDate || String(payDate).includes("KHR")) {
-      payDate = new Date().toLocaleDateString("km-KH");
-    }
+    if (!payDate || String(payDate).includes("KHR")) payDate = new Date().toLocaleDateString("km-KH");
 
     return `
       <tr>
@@ -503,9 +706,7 @@ function printStudentReportDetailed() {
       .sig-line { border-bottom: 1px dotted #000; width:100%; margin-top: 30px; }
       .sig-name { font-weight:800; font-size: 13px; margin-top: 10px; }
 
-      @media print {
-        @page { size: A4 landscape; margin: 1cm; }
-      }
+      @media print { @page { size: A4 landscape; margin: 1cm; } }
     </style>
   </head>
   <body>
@@ -574,9 +775,7 @@ function printStudentReportDetailed() {
   printWindow.document.close();
 }
 
-/* =========================
-   Print receipt per student
-========================= */
+/* ---------------- Receipt ---------------- */
 function printReceipt(index) {
   const s = allStudents[index];
   if (!s) return;
@@ -622,13 +821,17 @@ function printReceipt(index) {
   printWindow.document.close();
 }
 
-/* =========================
-   Init
-========================= */
+/* ---------------- Init ---------------- */
 document.addEventListener("DOMContentLoaded", () => {
-  $("addFee")?.addEventListener("input", () => {
-    const fee = toNumber($("addFee").value);
-    $("disp80").innerText = formatKHR(fee * 0.8);
-    $("disp20").innerText = formatKHR(fee * 0.2);
+  $("addFee")?.addEventListener("input", updateFeeSplitPreview);
+
+  // Apply filters on Enter
+  $("searchStudent")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") applyStudentFilters();
+  });
+
+  // Auto apply when dropdown changes
+  ["filterTeacher", "filterGrade", "filterGender"].forEach(id => {
+    $(id)?.addEventListener("change", applyStudentFilters);
   });
 });
