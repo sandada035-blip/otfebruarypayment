@@ -15,11 +15,10 @@
   --font-khmer:"Noto Serif Khmer","Khmer OS Siemreap",serif;
   --font-ui:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
 
-  --mobileNavH: 70px;
+  --mobileNavH: 72px;
 }
 
 html,body{height:100%}
-
 body{
   font-family:var(--font-ui);
   background:var(--bg);
@@ -28,7 +27,7 @@ body{
   -moz-osx-font-smoothing:grayscale;
 }
 
-/* Khmer UI default */
+/* Khmer everywhere */
 .fw-bold,.form-select,.form-control,label,table,h1,h2,h3,h4,h5,h6,.btn{
   font-family:var(--font-khmer);
 }
@@ -40,22 +39,10 @@ body{
 
 /* Layout */
 .page-wrap{max-width:1200px;margin:0 auto}
-
-/* When mobile bottom nav is visible, keep content above it */
-.app-safe-bottom{
-  padding-bottom: 14px;
-}
-@media (max-width: 576px){
-  .app-safe-bottom{
-    padding-bottom: calc(var(--mobileNavH) + 14px);
-  }
-}
+.app-safe-bottom{padding-bottom: calc(1rem + var(--mobileNavH));}
 
 /* Navbar */
-.app-navbar{
-  border-bottom:1px solid rgba(15,23,42,.08);
-  gap:10px;
-}
+.app-navbar{border-bottom:1px solid rgba(15,23,42,.08);gap:10px}
 .app-badge{
   width:40px;height:40px;border-radius:14px;
   display:grid;place-items:center;
@@ -63,7 +50,7 @@ body{
 }
 .app-navbar .btn{border-radius:12px;padding:8px 12px}
 @media (max-width:576px){
-  .app-navbar .btn-text{display:none}
+  .app-navbar .btn-text{display:none;}
 }
 
 /* Pills */
@@ -76,45 +63,6 @@ body{
 .pill-user{background:#eef2ff;border-color:rgba(67,97,238,.25);color:#1d4ed8}
 .pill-admin{background:#ecfeff;border-color:rgba(34,197,94,.25);color:#0f766e}
 .pill-name{color:#334155}
-
-/* Mobile bottom nav */
-.mobile-nav{
-  display:none;
-}
-@media (max-width:576px){
-  .mobile-nav{
-    display:flex;
-    position:fixed;
-    left:10px; right:10px; bottom:10px;
-    height:var(--mobileNavH);
-    background: rgba(255,255,255,.92);
-    border:1px solid rgba(15,23,42,.10);
-    backdrop-filter: blur(10px);
-    border-radius: 18px;
-    box-shadow: 0 16px 40px rgba(15,23,42,0.14);
-    z-index: 1200;
-    padding: 10px;
-    gap: 8px;
-  }
-  .mnav-btn{
-    flex:1;
-    border:1px solid rgba(15,23,42,.10);
-    background:#fff;
-    border-radius:14px;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:4px;
-    font-family:var(--font-khmer);
-    font-weight:900;
-    font-size:12px;
-    color:#0f172a;
-  }
-  .mnav-btn i{font-size:18px;color:#1d4ed8}
-  .mnav-btn:active{transform:scale(.98)}
-  .mnav-danger i{color:#ef4444}
-}
 
 /* Hero */
 .fb-hero-card{
@@ -184,14 +132,11 @@ body{
 }
 .bg-soft{background:rgba(15,23,42,0.02)}
 
-/* Sticky filter header inside Students on mobile */
+/* Filters sticky (nice on mobile) */
 .filters-sticky{
   position: sticky;
-  top: 74px; /* below navbar */
-  z-index: 20;
-}
-@media (max-width:576px){
-  .filters-sticky{ top: 0; } /* on small screens, content shifts nicely */
+  top: 72px;
+  z-index: 5;
 }
 
 /* Search */
@@ -229,7 +174,7 @@ body{
 
 /* FAB */
 .fab-btn{
-  position:fixed;right:18px;bottom:18px;
+  position:fixed;right:18px;bottom: calc(18px + var(--mobileNavH));
   width:60px;height:60px;border-radius:18px;
   background:linear-gradient(135deg,#2563eb,#7c3aed);
   color:#fff;border:none;
@@ -241,11 +186,39 @@ body{
 }
 .fab-btn:active{transform:scale(.92)}
 @media (max-width:576px){
-  .fab-btn{
-    width:54px;height:54px;
-    right:14px;
-    bottom: calc(var(--mobileNavH) + 18px);
-  }
+  .fab-btn{width:54px;height:54px;right:14px;bottom: calc(14px + var(--mobileNavH));}
+}
+
+/* Mobile bottom nav */
+.mobile-nav{
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: var(--mobileNavH);
+  background: rgba(255,255,255,.95);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(15,23,42,.10);
+  display: none;
+  padding: 8px 10px;
+  z-index: 999;
+}
+.mnav-btn{
+  flex: 1;
+  background: transparent;
+  border: 0;
+  border-radius: 14px;
+  padding: 10px 8px;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  color: #0f172a;
+  font-weight: 800;
+  font-size: 12px;
+}
+.mnav-btn i{font-size: 18px;}
+.mnav-danger{color: #ef4444;}
+
+@media (max-width: 768px){
+  .mobile-nav{display:flex; gap: 8px;}
 }
 
 /* Print */
