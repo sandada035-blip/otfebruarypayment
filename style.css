@@ -14,8 +14,6 @@
 
   --font-khmer:"Noto Serif Khmer","Khmer OS Siemreap",serif;
   --font-ui:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-
-  --mobileNavH: 72px;
 }
 
 html,body{height:100%}
@@ -26,8 +24,6 @@ body{
   -webkit-font-smoothing:antialiased;
   -moz-osx-font-smoothing:grayscale;
 }
-
-/* Khmer everywhere */
 .fw-bold,.form-select,.form-control,label,table,h1,h2,h3,h4,h5,h6,.btn{
   font-family:var(--font-khmer);
 }
@@ -39,7 +35,7 @@ body{
 
 /* Layout */
 .page-wrap{max-width:1200px;margin:0 auto}
-.app-safe-bottom{padding-bottom: calc(1rem + var(--mobileNavH));}
+.app-safe-bottom{padding-bottom:90px !important;} /* for mobile nav */
 
 /* Navbar */
 .app-navbar{border-bottom:1px solid rgba(15,23,42,.08);gap:10px}
@@ -50,7 +46,41 @@ body{
 }
 .app-navbar .btn{border-radius:12px;padding:8px 12px}
 @media (max-width:576px){
-  .app-navbar .btn-text{display:none;}
+  .app-navbar{display:none !important;}
+}
+
+/* Mobile bottom nav */
+.mobile-nav{
+  position:fixed;
+  left:12px; right:12px; bottom:12px;
+  background:#fff;
+  border:1px solid rgba(15,23,42,.10);
+  box-shadow:0 18px 40px rgba(15,23,42,.14);
+  border-radius:18px;
+  padding:10px;
+  display:none;
+  z-index:1200;
+}
+.mnav-btn{
+  flex:1;
+  border:none;
+  background:transparent;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  padding:8px;
+  border-radius:14px;
+  font-family:var(--font-khmer);
+  font-weight:800;
+  color:#334155;
+}
+.mnav-btn i{font-size:18px}
+.mnav-btn:active{transform:scale(.98)}
+.mnav-danger{color:#dc2626}
+@media (max-width:576px){
+  .mobile-nav{display:flex;gap:8px}
 }
 
 /* Pills */
@@ -132,11 +162,11 @@ body{
 }
 .bg-soft{background:rgba(15,23,42,0.02)}
 
-/* Filters sticky (nice on mobile) */
+/* Filters sticky */
 .filters-sticky{
-  position: sticky;
-  top: 72px;
-  z-index: 5;
+  position:sticky;
+  top:0;
+  z-index:10;
 }
 
 /* Search */
@@ -174,56 +204,24 @@ body{
 
 /* FAB */
 .fab-btn{
-  position:fixed;right:18px;bottom: calc(18px + var(--mobileNavH));
+  position:fixed;right:18px;bottom:90px; /* above mobile nav */
   width:60px;height:60px;border-radius:18px;
   background:linear-gradient(135deg,#2563eb,#7c3aed);
   color:#fff;border:none;
   box-shadow:0 14px 30px rgba(37,99,235,0.30);
   font-size:24px;
   display:grid;place-items:center;
-  z-index:1000;
+  z-index:1300;
   transition:transform .15s ease;
 }
 .fab-btn:active{transform:scale(.92)}
 @media (max-width:576px){
-  .fab-btn{width:54px;height:54px;right:14px;bottom: calc(14px + var(--mobileNavH));}
-}
-
-/* Mobile bottom nav */
-.mobile-nav{
-  position: fixed;
-  left: 0; right: 0; bottom: 0;
-  height: var(--mobileNavH);
-  background: rgba(255,255,255,.95);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid rgba(15,23,42,.10);
-  display: none;
-  padding: 8px 10px;
-  z-index: 999;
-}
-.mnav-btn{
-  flex: 1;
-  background: transparent;
-  border: 0;
-  border-radius: 14px;
-  padding: 10px 8px;
-  display: grid;
-  place-items: center;
-  gap: 4px;
-  color: #0f172a;
-  font-weight: 800;
-  font-size: 12px;
-}
-.mnav-btn i{font-size: 18px;}
-.mnav-danger{color: #ef4444;}
-
-@media (max-width: 768px){
-  .mobile-nav{display:flex; gap: 8px;}
+  .fab-btn{width:54px;height:54px;right:14px;bottom:96px}
 }
 
 /* Print */
 @media print{
-  .app-navbar,.mobile-nav,.fab-btn,.btn,.no-print,#loginSection{display:none!important}
+  .mobile-nav,.app-navbar,.fab-btn,.btn,.no-print,#loginSection{display:none!important}
   body{background:#fff!important;color:#000!important;margin:0;padding:0}
   .container-fluid{width:100%!important;padding:0!important;margin:0!important}
   .content-box{border:none!important;box-shadow:none!important}
