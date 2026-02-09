@@ -1,25 +1,37 @@
 /****************************************************
- * School Admin Pro - Pro Pack v1 (FULL)
- * ✅ Role badge + username
- * ✅ Last sync times
- * ✅ Export CSV (Students + Teacher Summary)
- * ✅ Advanced filters (Teacher/Grade/Gender + Search)
- * ✅ Quick totals on Students (based on filter)
- * ✅ Offline cache (LocalStorage)
+ * School Admin Pro - Pro Pack v2 (FULL)
+ * ✅ Pagination (Students + Teacher Summary)
+ * ✅ Sorting (click header)
+ * ✅ Date range filter (Students by PaymentDate r[7])
+ * ✅ Role permissions (User = view only)
+ * ✅ Export TSV (Excel Khmer OK) + Export Teacher PDF
+ * ✅ Print Student Report Detailed
  ****************************************************/
 
 const WEB_APP_URL =
   "https://script.google.com/macros/s/AKfycbwuOhZPO7OtZxkMGMOMJWJXRAMbR8t5l9TCviVoOHhgjVUVn3kzM2KE1ILnBbkCB21TDg/exec";
 
 let allStudents = [];
-let filteredStudents = [];
+let studentViewRows = [];     // after filter+sort
 let teacherRows = [];
+let teacherViewRows = [];     // after search+sort
 
 let currentUserRole = "User";
 let currentUsername = "-";
 
 let isEditMode = false;
 let originalName = "";
+
+/* ---------------- Pagination + Sort State ---------------- */
+let studentPage = 1;
+let studentRowsPerPage = 20;
+let studentSortKey = "name";
+let studentSortDir = "asc";
+
+let teacherPage = 1;
+let teacherRowsPerPage = 20;
+let teacherSortKey = "teacher";
+let teacherSortDir = "asc";
 
 /* ---------------- Helpers ---------------- */
 function $(id) { return document.getElementById(id); }
@@ -40,8 +52,43 @@ function nowStamp() {
   return d.toLocaleDateString("km-KH") + " " + d.toLocaleTimeString("km-KH");
 }
 
-function downloadText(filename, text) {
-  const blob = new Blob([text], { type: "text/csv;charset=utf-8;" });
+function setLastSync(which) {
+  const t = nowStamp();
+  if ($(which === "dashboard" ? "lastSyncDashboard" : "lastSyncStudents")) {
+    $(which === "dashboard" ? "lastSyncDashboard" : "lastSyncStudents").innerText = t;
+  }
+}
+
+/* Parse Payment Date (r[7]) safely */
+function parseDateAny(x) {
+  if (!x) return null;
+  const s = String(x).trim();
+
+  // ISO yyyy-mm-dd
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(s + "T00:00:00");
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // dd/mm/yyyy or dd-mm-yyyy
+  const m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (m) {
+    const dd = Number(m[1]), mm = Number(m[2]), yy = Number(m[3]);
+    const d = new Date(yy, mm - 1, dd);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // try native
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/* ---------------- TSV Download (UTF-8 BOM) ---------------- */
+function downloadTSV(filename, text) {
+  const BOM = "\ufeff";
+  const content = BOM + text.replace(/\n/g, "\r\n");
+  const blob = new Blob([content], { type: "text/tab-separated-values;charset=utf-8;" });
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -50,45 +97,6 @@ function downloadText(filename, text) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-}
-
-function csvEscape(v) {
-  const s = String(v ?? "");
-  if (/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
-  return s;
-}
-
-function setLastSync(which) {
-  const t = nowStamp();
-  if (which === "dashboard") $("lastSyncDashboard").innerText = t;
-  if (which === "students") $("lastSyncStudents").innerText = t;
-}
-
-/* ---------------- Local Cache ---------------- */
-const CACHE_KEYS = {
-  teachers: "pro_cache_teacherRows_v1",
-  students: "pro_cache_students_v1",
-  teachersTime: "pro_cache_teacherRows_time_v1",
-  studentsTime: "pro_cache_students_time_v1",
-};
-
-function saveCache() {
-  try {
-    localStorage.setItem(CACHE_KEYS.teachers, JSON.stringify(teacherRows));
-    localStorage.setItem(CACHE_KEYS.students, JSON.stringify(allStudents));
-    localStorage.setItem(CACHE_KEYS.teachersTime, new Date().toISOString());
-    localStorage.setItem(CACHE_KEYS.studentsTime, new Date().toISOString());
-  } catch {}
-}
-
-function loadCache() {
-  try {
-    const t = JSON.parse(localStorage.getItem(CACHE_KEYS.teachers) || "[]");
-    const s = JSON.parse(localStorage.getItem(CACHE_KEYS.students) || "[]");
-    if (Array.isArray(t) && t.length) teacherRows = t;
-    if (Array.isArray(s) && s.length) allStudents = s;
-    filteredStudents = allStudents.slice();
-  } catch {}
 }
 
 /* ---------------- API Core ---------------- */
@@ -112,11 +120,7 @@ async function login() {
     return Swal.fire("តម្រូវការ", "សូមបញ្ចូលឈ្មោះអ្នកប្រើប្រាស់ និងពាក្យសម្ងាត់", "warning");
   }
 
-  Swal.fire({
-    title: "កំពុងផ្ទៀងផ្ទាត់...",
-    didOpen: () => Swal.showLoading(),
-    allowOutsideClick: false,
-  });
+  Swal.fire({ title: "កំពុងផ្ទៀងផ្ទាត់...", didOpen: () => Swal.showLoading(), allowOutsideClick: false });
 
   const res = await callAPI("checkLogin", u, p);
 
@@ -124,7 +128,6 @@ async function login() {
     currentUserRole = res.role || "User";
     currentUsername = u;
 
-    // Hide login / show app
     const loginSec = $("loginSection");
     loginSec.classList.remove("d-flex");
     loginSec.classList.add("d-none");
@@ -133,13 +136,7 @@ async function login() {
     applyPermissions();
     showSection("dashboard");
 
-    Swal.fire({
-      icon: "success",
-      title: "ជោគជ័យ!",
-      text: "អ្នកបានចូលប្រើប្រាស់ដោយជោគជ័យ!",
-      timer: 1400,
-      showConfirmButton: false,
-    });
+    Swal.fire({ icon: "success", title: "ជោគជ័យ!", text: "អ្នកបានចូលប្រើប្រាស់ដោយជោគជ័យ!", timer: 1200, showConfirmButton: false });
   } else {
     Swal.fire("បរាជ័យ", "សូមបញ្ចូលឈ្មោះអ្នកប្រើប្រាស់ឬពាក្យសម្ងាត់ម្តងទៀត!", "error");
   }
@@ -154,28 +151,13 @@ function logout() {
     cancelButtonText: "បោះបង់",
   }).then((result) => {
     if (!result.isConfirmed) return;
-
-    const loginSec = $("loginSection");
-    loginSec.classList.remove("d-none");
-    loginSec.classList.add("d-flex");
-    $("mainApp").style.display = "none";
-
-    $("username").value = "";
-    $("password").value = "";
-
-    allStudents = [];
-    filteredStudents = [];
-    teacherRows = [];
-    currentUserRole = "User";
-    currentUsername = "-";
+    location.reload(); // simple + clean
   });
 }
 
-/* User permissions */
 function applyPermissions() {
   const isAdmin = currentUserRole === "Admin";
 
-  // Role badge
   const rb = $("roleBadge");
   const ub = $("userBadge");
   if (rb) {
@@ -185,16 +167,13 @@ function applyPermissions() {
   }
   if (ub) ub.innerHTML = `<i class="bi bi-person-circle"></i> ${currentUsername}`;
 
-  // Hide admin-only elements
   document.querySelectorAll(".admin-only").forEach((el) => {
     el.style.display = isAdmin ? "" : "none";
   });
 
-  // Modal note
   const note = document.querySelector(".user-note");
   if (note) note.classList.toggle("d-none", isAdmin);
 
-  // Extra safety for User
   if (!isAdmin) {
     window.openStudentModal = () => Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
     window.editStudent = () => Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
@@ -216,31 +195,53 @@ async function refreshAll() {
   await Promise.allSettled([loadDashboard(), loadStudents()]);
 }
 
-/* ---------------- Teacher Search ---------------- */
-function filterTeachers() {
-  const filter = ($("searchTeacher")?.value || "").toLowerCase();
-  const tr = $("teacherTable")?.getElementsByTagName("tr") || [];
-
-  for (let i = 1; i < tr.length; i++) {
-    const td = tr[i].getElementsByTagName("td")[0];
-    if (!td) continue;
-    const txt = (td.textContent || td.innerText || "").toLowerCase();
-    tr[i].style.display = txt.includes(filter) ? "" : "none";
+/* =========================================================
+   DASHBOARD (Teacher Summary v2)
+========================================================= */
+async function loadDashboard() {
+  const res = await callAPI("getTeacherData");
+  if (!res || !Array.isArray(res.rows)) {
+    return Swal.fire("Network", "មិនអាចទាញទិន្នន័យ Dashboard បានទេ។", "warning");
   }
+
+  teacherRows = res.rows;
+
+  // reset view state
+  teacherPage = 1;
+  teacherRowsPerPage = Number($("teacherRowsPerPage")?.value || 20);
+
+  applyTeacherView();
+  computeDashboardFromTeachers(teacherRows);
+
+  setLastSync("dashboard");
+  bindTeacherSortEvents();
 }
 
-/* ---------------- Dashboard ---------------- */
-function renderStatsCards({ totalTeachers, totalStudents, totalFee, teacher80, school20 }) {
+function computeDashboardFromTeachers(rows) {
+  let totalStudents = 0, totalFee = 0, teacher80 = 0, school20 = 0;
+
+  rows.forEach((r) => {
+    totalStudents += toNumber(r[2]);
+    totalFee += toNumber(r[3]);
+    teacher80 += toNumber(r[4]);
+    school20 += toNumber(r[5]);
+  });
+
+  if ((teacher80 === 0 && school20 === 0) && totalFee > 0) {
+    teacher80 = totalFee * 0.8;
+    school20 = totalFee * 0.2;
+  }
+
   $("statsRow").innerHTML = `
     <div class="stat-card accent-purple">
       <div class="label">គ្រូសរុប</div>
-      <div class="value">${(Number(totalTeachers)||0).toLocaleString("en-US")}</div>
+      <div class="value">${rows.length.toLocaleString("en-US")}</div>
       <div class="sub">ចំនួនគ្រូទាំងអស់</div>
     </div>
 
     <div class="stat-card accent-green">
       <div class="label">សិស្សសរុប</div>
-      <div class="value">${(Number(totalStudents)||0).toLocaleString("en-US")}</div>
+      <div class="value">${totalStudents.toLocaleString("en-US")}</div>
       <div class="sub">គណនាពី Teacher Summary</div>
     </div>
 
@@ -262,100 +263,122 @@ function renderStatsCards({ totalTeachers, totalStudents, totalFee, teacher80, s
   `;
 }
 
-async function loadDashboard() {
-  // Try API
-  const res = await callAPI("getTeacherData");
+/* Teacher view apply: search + sort + paginate */
+function applyTeacherView() {
+  teacherRowsPerPage = Number($("teacherRowsPerPage")?.value || 20);
+  const q = ($("searchTeacher")?.value || "").toLowerCase().trim();
 
-  if (!res || !Array.isArray(res.rows)) {
-    // fallback cache
-    loadCache();
-    if (teacherRows.length) {
-      renderTeacherTable(teacherRows);
-      computeDashboardFromTeachers(teacherRows);
-      setLastSync("dashboard");
-    } else {
-      Swal.fire("Network", "មិនអាចទាញទិន្នន័យ Dashboard បានទេ។", "warning");
-    }
-    return;
-  }
+  // map to objects for clean sort
+  teacherViewRows = teacherRows.map(r => ({
+    teacher: String(r[0] ?? ""),
+    gender: String(r[1] ?? ""),
+    students: toNumber(r[2]),
+    totalFee: toNumber(r[3]),
+    teacher80: toNumber(r[4]) || toNumber(r[3]) * 0.8,
+    school20: toNumber(r[5]) || toNumber(r[3]) * 0.2,
+    raw: r
+  }))
+  .filter(o => !q || o.teacher.toLowerCase().includes(q))
+  .sort((a,b) => compareByKey(a,b, teacherSortKey, teacherSortDir));
 
-  teacherRows = res.rows;
-  renderTeacherTable(teacherRows);
-  computeDashboardFromTeachers(teacherRows);
-
-  setLastSync("dashboard");
-  saveCache();
+  teacherPage = clampPage(teacherPage, teacherViewRows.length, teacherRowsPerPage);
+  renderTeacherPage();
+  updateTeacherSortIndicators();
 }
 
-function renderTeacherTable(rows) {
-  $("teacherBody").innerHTML = rows.map(r => `
+function resetTeacherView() {
+  $("searchTeacher").value = "";
+  $("teacherRowsPerPage").value = "20";
+  teacherRowsPerPage = 20;
+  teacherPage = 1;
+  teacherSortKey = "teacher";
+  teacherSortDir = "asc";
+  applyTeacherView();
+}
+
+function renderTeacherPage() {
+  const { pageItems, startIndex, endIndex, totalPages, totalItems } =
+    paginate(teacherViewRows, teacherPage, teacherRowsPerPage);
+
+  $("teacherBody").innerHTML = pageItems.map(o => `
     <tr>
-      <td>${r[0] ?? ""}</td>
-      <td>${r[1] ?? ""}</td>
-      <td>${r[2] ?? 0}</td>
-      <td class="fw-bold text-primary">${r[3] ?? ""}</td>
-      <td class="text-success">${r[4] ?? ""}</td>
-      <td class="text-danger">${r[5] ?? ""}</td>
+      <td>${o.teacher}</td>
+      <td>${o.gender}</td>
+      <td>${o.students}</td>
+      <td class="fw-bold text-primary">${formatKHR(o.totalFee)}</td>
+      <td class="text-success">${formatKHR(o.teacher80)}</td>
+      <td class="text-danger">${formatKHR(o.school20)}</td>
     </tr>
   `).join("");
+
+  $("teacherPagePill").innerText = `${teacherPage}/${Math.max(1,totalPages)}`;
+  $("teacherPageInfo").innerText = `Showing ${startIndex}-${endIndex} of ${totalItems}`;
 }
 
-function computeDashboardFromTeachers(rows) {
-  let totalStudents = 0, totalFee = 0, teacher80 = 0, school20 = 0;
+function teacherPrevPage() {
+  teacherPage = Math.max(1, teacherPage - 1);
+  renderTeacherPage();
+}
+function teacherNextPage() {
+  const totalPages = Math.max(1, Math.ceil(teacherViewRows.length / teacherRowsPerPage));
+  teacherPage = Math.min(totalPages, teacherPage + 1);
+  renderTeacherPage();
+}
 
-  rows.forEach((r) => {
-    totalStudents += toNumber(r[2]);
-    totalFee += toNumber(r[3]);
-    teacher80 += toNumber(r[4]);
-    school20 += toNumber(r[5]);
+function bindTeacherSortEvents() {
+  const ths = document.querySelectorAll("#teacherTable thead th.sortable");
+  ths.forEach(th => {
+    th.onclick = () => {
+      const key = th.getAttribute("data-key");
+      if (!key) return;
+      if (teacherSortKey === key) teacherSortDir = (teacherSortDir === "asc" ? "desc" : "asc");
+      else { teacherSortKey = key; teacherSortDir = "asc"; }
+      teacherPage = 1;
+      applyTeacherView();
+    };
   });
 
-  // fallback if 80/20 not provided by API
-  if ((teacher80 === 0 && school20 === 0) && totalFee > 0) {
-    teacher80 = totalFee * 0.8;
-    school20 = totalFee * 0.2;
-  }
+  $("searchTeacher")?.addEventListener("input", () => { teacherPage = 1; applyTeacherView(); });
+  $("teacherRowsPerPage")?.addEventListener("change", () => { teacherPage = 1; applyTeacherView(); });
+}
 
-  renderStatsCards({
-    totalTeachers: rows.length,
-    totalStudents,
-    totalFee,
-    teacher80,
-    school20
+function updateTeacherSortIndicators() {
+  document.querySelectorAll("#teacherTable thead th.sortable").forEach(th => {
+    const key = th.getAttribute("data-key");
+    const ind = th.querySelector(".sort-ind");
+    if (!ind) return;
+    if (key === teacherSortKey) ind.textContent = teacherSortDir === "asc" ? "▲" : "▼";
+    else ind.textContent = "";
   });
 }
 
-/* ---------------- Students ---------------- */
+/* =========================================================
+   STUDENTS (v2: filters + date range + sort + pagination)
+========================================================= */
 async function loadStudents() {
   $("studentLoading")?.classList.remove("d-none");
-
   const res = await callAPI("getStudentData");
-
   $("studentLoading")?.classList.add("d-none");
 
   if (!res || !Array.isArray(res.rows)) {
-    // fallback cache
-    loadCache();
-    if (allStudents.length) {
-      setupStudentFilterOptions(allStudents);
-      applyStudentFilters();
-      setLastSync("students");
-    } else {
-      Swal.fire("Network", "មិនអាចទាញទិន្នន័យ Students បានទេ។", "warning");
-    }
-    return;
+    return Swal.fire("Network", "មិនអាចទាញទិន្នន័យ Students បានទេ។", "warning");
   }
 
   allStudents = res.rows;
+
   setupStudentFilterOptions(allStudents);
+
+  // reset view state
+  studentPage = 1;
+  studentRowsPerPage = Number($("studentRowsPerPage")?.value || 20);
+
   applyStudentFilters();
 
   setLastSync("students");
-  saveCache();
+  bindStudentSortEvents();
 }
 
 function setupStudentFilterOptions(rows) {
-  // Teacher options
   const teachers = new Set();
   const grades = new Set();
 
@@ -369,52 +392,83 @@ function setupStudentFilterOptions(rows) {
 
   if (teacherSel) {
     const list = ["ALL", ...Array.from(teachers).sort((a,b)=>a.localeCompare(b,'km'))];
-    teacherSel.innerHTML = list.map(t => `<option value="${csvEscape(t)}">${t === "ALL" ? "All Teachers" : t}</option>`).join("");
+    teacherSel.innerHTML = list.map(t => `<option value="${escapeHtml(t)}">${t === "ALL" ? "All Teachers" : t}</option>`).join("");
   }
 
   if (gradeSel) {
     const list = ["ALL", ...Array.from(grades).sort((a,b)=>a.localeCompare(b,'km'))];
-    gradeSel.innerHTML = list.map(g => `<option value="${csvEscape(g)}">${g === "ALL" ? "All Grades" : g}</option>`).join("");
+    gradeSel.innerHTML = list.map(g => `<option value="${escapeHtml(g)}">${g === "ALL" ? "All Grades" : g}</option>`).join("");
   }
 }
 
 function applyStudentFilters() {
+  studentRowsPerPage = Number($("studentRowsPerPage")?.value || 20);
+
   const q = ($("searchStudent")?.value || "").toLowerCase().trim();
   const teacher = ($("filterTeacher")?.value || "ALL");
   const grade = ($("filterGrade")?.value || "ALL");
   const gender = ($("filterGender")?.value || "ALL");
 
-  filteredStudents = allStudents.filter(r => {
-    const name = String(r[0] ?? "").toLowerCase();
-    const gen = String(r[1] ?? "");
-    const grd = String(r[2] ?? "");
-    const tch = String(r[3] ?? "");
+  const from = $("dateFrom")?.value ? new Date($("dateFrom").value + "T00:00:00") : null;
+  const to = $("dateTo")?.value ? new Date($("dateTo").value + "T23:59:59") : null;
 
-    const matchQ = !q || name.includes(q) || tch.toLowerCase().includes(q);
-    const matchTeacher = (teacher === "ALL") || (tch === teacher);
-    const matchGrade = (grade === "ALL") || (grd === grade);
-    const matchGender = (gender === "ALL") || (gen === gender);
+  const mapped = allStudents.map((r, idx) => ({
+    idx,
+    name: String(r[0] ?? ""),
+    gender: String(r[1] ?? ""),
+    grade: String(r[2] ?? ""),
+    teacher: String(r[3] ?? ""),
+    fee: toNumber(r[4]),
+    feeText: String(r[4] ?? ""),
+    payDateRaw: r[7],
+    payDate: parseDateAny(r[7]),
+    raw: r
+  }));
 
-    return matchQ && matchTeacher && matchGrade && matchGender;
-  });
+  studentViewRows = mapped.filter(o => {
+    const matchQ = !q || o.name.toLowerCase().includes(q) || o.teacher.toLowerCase().includes(q);
+    const matchTeacher = (teacher === "ALL") || (o.teacher === teacher);
+    const matchGrade = (grade === "ALL") || (o.grade === grade);
+    const matchGender = (gender === "ALL") || (o.gender === gender);
 
-  renderStudentTable(filteredStudents);
-  renderStudentQuickStats(filteredStudents);
+    // date filter uses PaymentDate (r[7])
+    let matchDate = true;
+    if (from || to) {
+      if (!o.payDate) matchDate = false;
+      else {
+        if (from && o.payDate < from) matchDate = false;
+        if (to && o.payDate > to) matchDate = false;
+      }
+    }
+    return matchQ && matchTeacher && matchGrade && matchGender && matchDate;
+  })
+  .sort((a,b) => compareByKey(a,b, studentSortKey, studentSortDir));
+
+  studentPage = clampPage(studentPage, studentViewRows.length, studentRowsPerPage);
+
+  renderStudentPage();
+  renderStudentQuickStats(studentViewRows);
+
+  updateStudentSortIndicators();
 }
 
 function clearStudentFilters() {
   $("searchStudent").value = "";
-  if ($("filterTeacher")) $("filterTeacher").value = "ALL";
-  if ($("filterGrade")) $("filterGrade").value = "ALL";
-  if ($("filterGender")) $("filterGender").value = "ALL";
+  $("filterTeacher").value = "ALL";
+  $("filterGrade").value = "ALL";
+  $("filterGender").value = "ALL";
+  $("dateFrom").value = "";
+  $("dateTo").value = "";
+
+  studentPage = 1;
   applyStudentFilters();
 }
 
 function renderStudentQuickStats(rows) {
   const count = rows.length;
   let totalFee = 0;
+  rows.forEach(o => totalFee += o.fee);
 
-  rows.forEach(r => totalFee += toNumber(r[4]));
   const teacher80 = totalFee * 0.8;
   const school20 = totalFee * 0.2;
 
@@ -422,7 +476,7 @@ function renderStudentQuickStats(rows) {
     <div class="stat-card accent-green">
       <div class="label">សិស្ស (Filtered)</div>
       <div class="value">${count.toLocaleString("en-US")}</div>
-      <div class="sub">តាម Filter/ Search</div>
+      <div class="sub">តាម Filter/ Search/ Date</div>
     </div>
 
     <div class="stat-card accent-blue">
@@ -445,203 +499,256 @@ function renderStudentQuickStats(rows) {
   `;
 }
 
-function renderStudentTable(rows) {
+function renderStudentPage() {
+  const { pageItems, startIndex, endIndex, totalPages, totalItems } =
+    paginate(studentViewRows, studentPage, studentRowsPerPage);
+
   const isAdmin = currentUserRole === "Admin";
 
-  $("studentBody").innerHTML = rows.map((r) => {
-    const idx = allStudents.indexOf(r); // keep receipt/edit/delete index correct
-    return `
-      <tr>
-        <td class="fw-bold text-primary">${r[0] ?? ""}</td>
-        <td class="d-none d-md-table-cell">${r[1] ?? ""}</td>
-        <td class="d-none d-md-table-cell">${r[2] ?? ""}</td>
-        <td>${r[3] ?? ""}</td>
-        <td class="text-success small fw-bold">${r[4] ?? ""}</td>
-        <td>
-          <div class="btn-group">
-            <button class="btn btn-sm btn-outline-info" title="វិក្កយបត្រ" onclick="printReceipt(${idx})">
-              <i class="bi bi-printer"></i>
-            </button>
+  $("studentBody").innerHTML = pageItems.map(o => `
+    <tr>
+      <td class="fw-bold text-primary">${escapeHtml(o.name)}</td>
+      <td class="d-none d-md-table-cell">${escapeHtml(o.gender)}</td>
+      <td class="d-none d-md-table-cell">${escapeHtml(o.grade)}</td>
+      <td>${escapeHtml(o.teacher)}</td>
+      <td class="text-success small fw-bold">${escapeHtml(o.feeText || formatKHR(o.fee))}</td>
+      <td>${escapeHtml(o.payDateRaw || "")}</td>
+      <td>
+        <div class="btn-group">
+          <button class="btn btn-sm btn-outline-info" title="វិក្កយបត្រ" onclick="printReceipt(${o.idx})">
+            <i class="bi bi-printer"></i>
+          </button>
+          ${
+            isAdmin ? `
+              <button class="btn btn-sm btn-outline-warning" title="កែប្រែ" onclick="editStudent(${o.idx})">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-danger" title="លុប" onclick="confirmDelete(${o.idx})">
+                <i class="bi bi-trash"></i>
+              </button>
+            ` : ""
+          }
+        </div>
+      </td>
+    </tr>
+  `).join("");
 
-            ${
-              isAdmin ? `
-                <button class="btn btn-sm btn-outline-warning" title="កែប្រែ" onclick="editStudent(${idx})">
-                  <i class="bi bi-pencil"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-danger" title="លុប" onclick="confirmDelete(${idx})">
-                  <i class="bi bi-trash"></i>
-                </button>
-              ` : ""
-            }
-          </div>
-        </td>
-      </tr>
-    `;
-  }).join("");
+  $("studentPagePill").innerText = `${studentPage}/${Math.max(1,totalPages)}`;
+  $("studentPageInfo").innerText = `Showing ${startIndex}-${endIndex} of ${totalItems}`;
 }
 
-/* ---------------- Export CSV ---------------- */
-function exportTeacherCSV() {
+function studentPrevPage() {
+  studentPage = Math.max(1, studentPage - 1);
+  renderStudentPage();
+}
+function studentNextPage() {
+  const totalPages = Math.max(1, Math.ceil(studentViewRows.length / studentRowsPerPage));
+  studentPage = Math.min(totalPages, studentPage + 1);
+  renderStudentPage();
+}
+
+function bindStudentSortEvents() {
+  const ths = document.querySelectorAll("#studentTable thead th.sortable");
+  ths.forEach(th => {
+    th.onclick = () => {
+      const key = th.getAttribute("data-key");
+      if (!key) return;
+      if (studentSortKey === key) studentSortDir = (studentSortDir === "asc" ? "desc" : "asc");
+      else { studentSortKey = key; studentSortDir = "asc"; }
+      studentPage = 1;
+      applyStudentFilters();
+    };
+  });
+
+  $("studentRowsPerPage")?.addEventListener("change", () => { studentPage = 1; applyStudentFilters(); });
+
+  $("searchStudent")?.addEventListener("input", () => { studentPage = 1; applyStudentFilters(); });
+  $("filterTeacher")?.addEventListener("change", () => { studentPage = 1; applyStudentFilters(); });
+  $("filterGrade")?.addEventListener("change", () => { studentPage = 1; applyStudentFilters(); });
+  $("filterGender")?.addEventListener("change", () => { studentPage = 1; applyStudentFilters(); });
+  $("dateFrom")?.addEventListener("change", () => { studentPage = 1; applyStudentFilters(); });
+  $("dateTo")?.addEventListener("change", () => { studentPage = 1; applyStudentFilters(); });
+
+  $("searchStudent")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { studentPage = 1; applyStudentFilters(); }
+  });
+}
+
+function updateStudentSortIndicators() {
+  document.querySelectorAll("#studentTable thead th.sortable").forEach(th => {
+    const key = th.getAttribute("data-key");
+    const ind = th.querySelector(".sort-ind");
+    if (!ind) return;
+    if (key === studentSortKey) ind.textContent = studentSortDir === "asc" ? "▲" : "▼";
+    else ind.textContent = "";
+  });
+}
+
+/* =========================================================
+   Export TSV (Khmer OK in Excel)
+========================================================= */
+function exportTeacherTSV() {
   if (!teacherRows.length) return Swal.fire("Info", "មិនមានទិន្នន័យគ្រូសម្រាប់ Export។", "info");
 
-  const header = ["Teacher", "Gender", "Students", "TotalFee", "Teacher80", "School20"];
-  const lines = [header.join(",")];
+  const header = ["Teacher","Gender","Students","TotalFee","Teacher80","School20"];
+  const lines = [header.join("\t")];
 
   teacherRows.forEach(r => {
     const row = [
-      csvEscape(r[0]),
-      csvEscape(r[1]),
-      csvEscape(r[2]),
-      csvEscape(r[3]),
-      csvEscape(r[4]),
-      csvEscape(r[5]),
+      String(r[0] ?? ""),
+      String(r[1] ?? ""),
+      String(r[2] ?? ""),
+      String(r[3] ?? ""),
+      String(r[4] ?? ""),
+      String(r[5] ?? ""),
     ];
-    lines.push(row.join(","));
+    lines.push(row.join("\t"));
   });
 
-  downloadText(`Teacher_Summary_${new Date().toISOString().slice(0,10)}.csv`, lines.join("\n"));
+  downloadTSV(`Teacher_Summary_${new Date().toISOString().slice(0,10)}.tsv`, lines.join("\n"));
 }
 
-function exportStudentCSV() {
-  const rows = filteredStudents.length ? filteredStudents : allStudents;
+function exportStudentTSV() {
+  const rows = studentViewRows.length ? studentViewRows.map(o => o.raw) : allStudents;
   if (!rows.length) return Swal.fire("Info", "មិនមានទិន្នន័យសិស្សសម្រាប់ Export។", "info");
 
-  const header = ["StudentName", "Gender", "Grade", "Teacher", "Fee", "PaymentDate"];
-  const lines = [header.join(",")];
+  const header = ["StudentName","Gender","Grade","Teacher","Fee","PaymentDate"];
+  const lines = [header.join("\t")];
 
   rows.forEach(r => {
     const row = [
-      csvEscape(r[0]),
-      csvEscape(r[1]),
-      csvEscape(r[2]),
-      csvEscape(r[3]),
-      csvEscape(r[4]),
-      csvEscape(r[7]), // paymentDate
+      String(r[0] ?? ""),
+      String(r[1] ?? ""),
+      String(r[2] ?? ""),
+      String(r[3] ?? ""),
+      String(r[4] ?? ""),
+      String(r[7] ?? ""),
     ];
-    lines.push(row.join(","));
+    lines.push(row.join("\t"));
   });
 
-  downloadText(`Students_${new Date().toISOString().slice(0,10)}.csv`, lines.join("\n"));
+  downloadTSV(`Students_${new Date().toISOString().slice(0,10)}.tsv`, lines.join("\n"));
 }
 
-/* ---------------- Modal + Fee preview ---------------- */
-function updateFeeSplitPreview() {
-  const fee = toNumber($("addFee")?.value);
-  $("disp80").innerText = formatKHR(fee * 0.8);
-  $("disp20").innerText = formatKHR(fee * 0.2);
-}
-
-function openStudentModal() {
-  isEditMode = false;
-  originalName = "";
-
-  $("modalTitle").innerText = "បញ្ចូលសិស្សថ្មី";
-  $("addStudentName").value = "";
-  $("addGender").value = "Male";
-  $("addGrade").value = "";
-  $("addFee").value = "";
-  updateFeeSplitPreview();
-
-  bootstrap.Modal.getOrCreateInstance($("studentModal")).show();
-}
-
-function editStudent(index) {
-  isEditMode = true;
-  const r = allStudents[index];
-  originalName = r[0] ?? "";
-
-  $("modalTitle").innerText = "កែប្រែព័ត៌មាន";
-  $("addStudentName").value = r[0] ?? "";
-  $("addGender").value = r[1] ?? "Male";
-  $("addGrade").value = r[2] ?? "";
-  $("addTeacherSelect").value = r[3] ?? "";
-
-  const feeValue = String(r[4] ?? "").replace(/[^0-9]/g, "");
-  $("addFee").value = feeValue;
-  updateFeeSplitPreview();
-
-  bootstrap.Modal.getOrCreateInstance($("studentModal")).show();
-}
-
-/* ---------------- CRUD (Admin) ---------------- */
-async function submitStudent() {
-  if (currentUserRole !== "Admin") {
-    return Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
+/* =========================================================
+   Export Teacher PDF (Khmer OK)
+========================================================= */
+function exportTeacherPDF() {
+  if (!teacherRows.length) {
+    return Swal.fire("Info", "មិនមានទិន្នន័យ Teacher Summary សម្រាប់ Export PDF។", "info");
   }
 
-  const name = $("addStudentName").value.trim();
-  const teacher = $("addTeacherSelect").value;
-  const feeNum = toNumber($("addFee").value);
+  let totalTeachers = teacherRows.length;
+  let totalStudents = 0;
+  let totalFee = 0;
 
-  if (!name || !teacher) {
-    return Swal.fire("Error", "សូមបំពេញឈ្មោះសិស្ស និងជ្រើសរើសគ្រូ", "error");
-  }
-
-  const form = {
-    studentName: name,
-    gender: $("addGender").value,
-    grade: $("addGrade").value,
-    teacherName: teacher,
-    schoolFee: formatKHR(feeNum),
-    teacherFeeVal: formatKHR(feeNum * 0.8),
-    schoolFeeVal: formatKHR(feeNum * 0.2),
-    paymentDate: new Date().toISOString().split("T")[0],
-    startDate: new Date().toISOString().split("T")[0]
-  };
-
-  Swal.fire({
-    title: "កំពុងរក្សាទុក...",
-    didOpen: () => Swal.showLoading(),
-    allowOutsideClick: false
+  teacherRows.forEach(r => {
+    totalStudents += toNumber(r[2]);
+    totalFee += toNumber(r[3]);
   });
 
-  const res = isEditMode
-    ? await callAPI("updateStudentData", originalName, form)
-    : await callAPI("saveStudentToTeacherSheet", form);
+  const total80 = totalFee * 0.8;
+  const total20 = totalFee * 0.2;
 
-  if (res && res.success) {
-    Swal.fire("ជោគជ័យ", res.message || "រក្សាទុកបានសម្រេច", "success");
-    bootstrap.Modal.getOrCreateInstance($("studentModal")).hide();
-    await refreshAll();
-  } else {
-    Swal.fire("Error", res?.message || "រក្សាទុកមិនបានសម្រេច", "error");
-  }
+  const trs = teacherRows.map(r => {
+    const fee = toNumber(r[3]);
+    const t80 = toNumber(r[4]) || fee * 0.8;
+    const s20 = toNumber(r[5]) || fee * 0.2;
+    return `
+      <tr>
+        <td class="left">${escapeHtml(r[0] ?? "")}</td>
+        <td class="center">${escapeHtml(r[1] ?? "")}</td>
+        <td class="center">${toNumber(r[2])}</td>
+        <td class="right">${formatKHR(fee)}</td>
+        <td class="right blue">${formatKHR(t80)}</td>
+        <td class="right red">${formatKHR(s20)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  const printWindow = window.open("", "", "height=900,width=1100");
+  const html = `
+  <html><head><title>Teacher Summary PDF</title>
+  <style>
+    @page{size:A4 portrait;margin:12mm;}
+    body{font-family:'Noto Serif Khmer','Khmer OS Siemreap',sans-serif;color:#000;}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}
+    .logoBox{width:70px;text-align:center;}
+    .logoBox img{width:70px;}
+    .rightHeader{text-align:center;font-family:'Khmer OS Muol Light','Noto Serif Khmer',serif;font-size:14px;line-height:1.7;}
+    .docTitle{text-align:center;margin:10px 0 14px;font-family:'Khmer OS Muol Light','Noto Serif Khmer',serif;font-size:18px;text-decoration:underline;}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}
+    .stat{border:1px solid #000;border-radius:6px;padding:8px;text-align:center;}
+    .stat .label{font-size:11px;font-weight:700;}
+    .stat .value{font-size:13px;font-weight:800;margin-top:2px;}
+    table{width:100%;border-collapse:collapse;font-size:12px;}
+    th,td{border:1px solid #000;padding:8px;}
+    th{background:#f2f2f2;font-weight:800;text-align:center;}
+    td.left{text-align:left;}
+    td.center{text-align:center;}
+    td.right{text-align:right;font-weight:700;}
+    .blue{color:#0d6efd;}
+    .red{color:#dc3545;}
+    .footer{margin-top:14px;display:flex;justify-content:space-between;padding:0 50px;}
+    .sig{width:240px;text-align:center;}
+    .sig .role{font-family:'Khmer OS Muol Light','Noto Serif Khmer',serif;font-size:13px;margin-bottom:70px;}
+    .sig .line{border-bottom:1px dotted #000;}
+    .sig .name{margin-top:12px;font-weight:800;}
+    *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+  </style>
+  </head><body>
+    <div class="header">
+      <div class="logoBox">
+        <img src="https://blogger.googleusercontent.com/img/a/AVvXsEi33gP-LjadWAMAbW6z8mKj7NUYkZeslEJ4sVFw7WK3o9fQ-JTQFMWEe06xxew4lj7WKpfuk8fadTm5kXo3GSW9jNaQHE8SrCs8_bUFDV8y4TOJ1Zhbu0YKVnWIgL7sTPuEPMrmrtuNqwDPWKHOvy6PStAaSrCz-GpLfsQNyq-BAElq9EI3etjnYsft0Pvo" />
+        <div style="font-size:11px;margin-top:4px;">សាលាបឋមសិក្សាសម្តេចព្រះរាជអគ្គមហេសី</div>
+      </div>
+      <div class="rightHeader">ព្រះរាជាណាចក្រកម្ពុជា<br/>ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
+    </div>
+
+    <div class="docTitle">របាយការណ៍សង្ខេបគ្រូបង្រៀន (Teacher Summary)</div>
+
+    <div class="stats">
+      <div class="stat"><div class="label">គ្រូសរុប</div><div class="value">${totalTeachers}</div></div>
+      <div class="stat"><div class="label">សិស្សសរុប</div><div class="value">${totalStudents}</div></div>
+      <div class="stat"><div class="label">ទឹកប្រាក់សរុប</div><div class="value">${formatKHR(totalFee)}</div></div>
+      <div class="stat"><div class="label">គ្រូ 80% / សាលា 20%</div><div class="value"><span class="blue">${formatKHR(total80)}</span> / <span class="red">${formatKHR(total20)}</span></div></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:34%;">គ្រូ</th>
+          <th style="width:12%;">ភេទ</th>
+          <th style="width:10%;">សិស្ស</th>
+          <th style="width:14%;">តម្លៃសរុប</th>
+          <th style="width:15%;">៨០%</th>
+          <th style="width:15%;">២០%</th>
+        </tr>
+      </thead>
+      <tbody>${trs}</tbody>
+    </table>
+
+    <div style="text-align:right;margin-top:10px;">ថ្ងៃទី........ខែ........ឆ្នាំ២០២៦</div>
+
+    <div class="footer">
+      <div class="sig"><div class="role">បានពិនិត្យ និងឯកភាព<br/>នាយកសាលា</div><div class="line"></div></div>
+      <div class="sig"><div class="role">អ្នកចេញវិក្កយបត្រ</div><div class="name">ហម ម៉ាលីនដា</div></div>
+    </div>
+
+    <script>
+      window.onload=function(){ window.print(); setTimeout(function(){window.close()},600); }
+    </script>
+  </body></html>`;
+
+  printWindow.document.write(html);
+  printWindow.document.close();
 }
 
-async function confirmDelete(index) {
-  if (currentUserRole !== "Admin") {
-    return Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
-  }
-
-  const name = allStudents[index]?.[0] || "";
-  const teacher = allStudents[index]?.[3] || "";
-
-  Swal.fire({
-    title: "លុបទិន្នន័យ?",
-    text: `តើអ្នកចង់លុបសិស្ស ${name}?`,
-    icon: "warning",
-    showCancelButton: true,
-    confirmButtonColor: "#ef4444",
-    confirmButtonText: "បាទ លុបវា!",
-    cancelButtonText: "បោះបង់",
-  }).then(async (result) => {
-    if (!result.isConfirmed) return;
-
-    Swal.fire({ title: "កំពុងលុប...", didOpen: () => Swal.showLoading() });
-    const res = await callAPI("deleteStudentData", name, teacher);
-
-    if (res && res.success) {
-      Swal.fire("Deleted!", res.message || "លុបបានសម្រេច", "success");
-      await refreshAll();
-    } else {
-      Swal.fire("Error", res?.message || "លុបមិនបានសម្រេច", "error");
-    }
-  });
-}
-
-/* ---------------- Print: Detailed report ---------------- */
+/* =========================================================
+   Print Student Report Detailed (uses current filtered view)
+========================================================= */
 function printStudentReportDetailed() {
-  const rows = filteredStudents.length ? filteredStudents : allStudents;
+  const rows = studentViewRows.length ? studentViewRows.map(o => o.raw) : allStudents;
 
   const printWindow = window.open("", "", "height=900,width=1100");
   const totalStudents = rows.length;
@@ -660,14 +767,14 @@ function printStudentReportDetailed() {
 
     return `
       <tr>
-        <td style="border:1px solid #000;padding:6px;text-align:left;">${r[0] ?? ""}</td>
-        <td style="border:1px solid #000;padding:6px;text-align:center;">${r[1] ?? ""}</td>
-        <td style="border:1px solid #000;padding:6px;text-align:center;">${r[2] ?? ""}</td>
-        <td style="border:1px solid #000;padding:6px;text-align:left;">${r[3] ?? ""}</td>
+        <td style="border:1px solid #000;padding:6px;text-align:left;">${escapeHtml(r[0] ?? "")}</td>
+        <td style="border:1px solid #000;padding:6px;text-align:center;">${escapeHtml(r[1] ?? "")}</td>
+        <td style="border:1px solid #000;padding:6px;text-align:center;">${escapeHtml(r[2] ?? "")}</td>
+        <td style="border:1px solid #000;padding:6px;text-align:left;">${escapeHtml(r[3] ?? "")}</td>
         <td style="border:1px solid #000;padding:6px;text-align:right;font-weight:bold;">${feeNum.toLocaleString()} ៛</td>
         <td style="border:1px solid #000;padding:6px;text-align:right;color:#0d6efd;">${teacherPart.toLocaleString()} ៛</td>
         <td style="border:1px solid #000;padding:6px;text-align:right;color:#dc3545;">${schoolPart.toLocaleString()} ៛</td>
-        <td style="border:1px solid #000;padding:6px;text-align:center;">${payDate}</td>
+        <td style="border:1px solid #000;padding:6px;text-align:center;">${escapeHtml(payDate)}</td>
       </tr>
     `;
   }).join("");
@@ -676,40 +783,31 @@ function printStudentReportDetailed() {
   const fee20 = totalFee * 0.2;
 
   const reportHTML = `
-  <html>
-  <head>
-    <title>Student Report Detailed</title>
-    <style>
-      body { font-family: 'Khmer OS Siemreap', sans-serif; padding: 20px; color: black; background: white; }
-      .header-wrapper { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 22px; }
-      .left-header { text-align:center; }
-      .right-header { text-align:center; font-family: 'Khmer OS Muol Light'; font-size: 14px; }
-      .logo-box { width: 70px; margin:0 auto 5px; }
-      .logo-box img { width:100%; display:block; }
-      .school-kh { font-family: 'Khmer OS Muol Light'; font-size: 14px; line-height: 1.8; }
-
-      .report-title { text-align:center; font-family:'Khmer OS Muol Light'; font-size:18px; text-decoration: underline; margin: 0 0 14px; }
-
-      .stats { display:grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 16px; }
-      .stat { border:1px solid #000; padding: 6px; text-align:center; border-radius: 4px; }
-      .stat .label { font-size:10px; font-weight:700; }
-      .stat .value { font-size:12px; font-weight:800; margin-top:2px; }
-
-      table { width:100%; border-collapse: collapse; font-size: 12px; }
-      th { border:1px solid #000; padding: 8px; background:#f2f2f2; }
-      td { border:1px solid #000; padding: 6px; }
-
-      .date-section { text-align:right; font-size: 13px; margin-top: 14px; padding-right: 60px; }
-      .signature-wrapper { display:flex; justify-content:space-between; padding: 0 80px; margin-top: 18px; }
-      .sig-box { text-align:center; width: 220px; }
-      .sig-role { font-family:'Khmer OS Muol Light'; font-size: 13px; margin-bottom: 60px; }
-      .sig-line { border-bottom: 1px dotted #000; width:100%; margin-top: 30px; }
-      .sig-name { font-weight:800; font-size: 13px; margin-top: 10px; }
-
-      @media print { @page { size: A4 landscape; margin: 1cm; } }
-    </style>
-  </head>
-  <body>
+  <html><head><title>Student Report Detailed</title>
+  <style>
+    body{font-family:'Khmer OS Siemreap','Noto Serif Khmer',sans-serif;padding:20px;color:#000;background:#fff;}
+    .header-wrapper{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px;}
+    .left-header{text-align:center;}
+    .right-header{text-align:center;font-family:'Khmer OS Muol Light','Noto Serif Khmer',serif;font-size:14px;line-height:1.7;}
+    .logo-box{width:70px;margin:0 auto 5px;}
+    .logo-box img{width:100%;display:block;}
+    .school-kh{font-family:'Khmer OS Muol Light','Noto Serif Khmer',serif;font-size:14px;line-height:1.8;}
+    .report-title{text-align:center;font-family:'Khmer OS Muol Light','Noto Serif Khmer',serif;font-size:18px;text-decoration:underline;margin:0 0 14px;}
+    .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px;}
+    .stat{border:1px solid #000;padding:6px;text-align:center;border-radius:4px;}
+    .stat .label{font-size:10px;font-weight:700;}
+    .stat .value{font-size:12px;font-weight:800;margin-top:2px;}
+    table{width:100%;border-collapse:collapse;font-size:12px;}
+    th{border:1px solid #000;padding:8px;background:#f2f2f2;}
+    td{border:1px solid #000;padding:6px;}
+    .date-section{text-align:right;font-size:13px;margin-top:14px;padding-right:60px;}
+    .signature-wrapper{display:flex;justify-content:space-between;padding:0 80px;margin-top:18px;}
+    .sig-box{text-align:center;width:220px;}
+    .sig-role{font-family:'Khmer OS Muol Light','Noto Serif Khmer',serif;font-size:13px;margin-bottom:60px;}
+    .sig-line{border-bottom:1px dotted #000;width:100%;margin-top:30px;}
+    .sig-name{font-weight:800;font-size:13px;margin-top:10px;}
+    @media print{@page{size:A4 landscape;margin:1cm;}}
+  </style></head><body>
     <div class="header-wrapper">
       <div class="left-header">
         <div class="logo-box">
@@ -717,10 +815,7 @@ function printStudentReportDetailed() {
         </div>
         <div class="school-kh">សាលាបឋមសិក្សាសម្តេចព្រះរាជអគ្គមហេសី<br/>នរោត្តមមុនីនាថសីហនុ</div>
       </div>
-
-      <div class="right-header">
-        ព្រះរាជាណាចក្រកម្ពុជា<br/>ជាតិ សាសនា ព្រះមហាក្សត្រ
-      </div>
+      <div class="right-header">ព្រះរាជាណាចក្រកម្ពុជា<br/>ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
     </div>
 
     <div class="report-title">របាយការណ៍លម្អិតសិស្សរៀនបំប៉នបន្ថែម</div>
@@ -763,75 +858,226 @@ function printStudentReportDetailed() {
     </div>
 
     <script>
-      window.onload = function() {
-        window.print();
-        setTimeout(function(){ window.close(); }, 600);
-      };
+      window.onload=function(){ window.print(); setTimeout(function(){window.close()},600); }
     </script>
-  </body>
-  </html>`;
+  </body></html>`;
 
   printWindow.document.write(reportHTML);
   printWindow.document.close();
 }
 
-/* ---------------- Receipt ---------------- */
+/* =========================================================
+   Receipt
+========================================================= */
 function printReceipt(index) {
   const s = allStudents[index];
   if (!s) return;
 
   const printWindow = window.open("", "", "height=600,width=800");
   const receiptHTML = `
-    <html>
-    <head>
-      <title>Receipt - ${s[0] ?? ""}</title>
+    <html><head>
+      <title>Receipt - ${escapeHtml(s[0] ?? "")}</title>
       <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Khmer:wght@400;700&display=swap" rel="stylesheet">
       <style>
-        body { font-family: 'Noto Serif Khmer', serif; padding: 40px; text-align: center; }
-        .receipt-box { border: 2px solid #333; padding: 30px; width: 420px; margin: auto; border-radius: 12px; }
-        .header { font-weight: 800; font-size: 20px; margin-bottom: 5px; color: #4361ee; }
-        .line { border-bottom: 2px dashed #ccc; margin: 15px 0; }
-        .details { text-align: left; font-size: 15px; line-height: 1.85; }
-        .footer { margin-top: 22px; font-size: 12px; font-style: italic; color: #666; }
-        .price { font-size: 18px; color: #10b981; font-weight: 800; }
+        body{font-family:'Noto Serif Khmer',serif;padding:40px;text-align:center;}
+        .receipt-box{border:2px solid #333;padding:30px;width:420px;margin:auto;border-radius:12px;}
+        .header{font-weight:800;font-size:20px;margin-bottom:5px;color:#4361ee;}
+        .line{border-bottom:2px dashed #ccc;margin:15px 0;}
+        .details{text-align:left;font-size:15px;line-height:1.85;}
+        .footer{margin-top:22px;font-size:12px;font-style:italic;color:#666;}
+        .price{font-size:18px;color:#10b981;font-weight:800;}
       </style>
-    </head>
-    <body>
+    </head><body>
       <div class="receipt-box">
         <div class="header">វិក្កយបត្របង់ប្រាក់</div>
-        <div style="font-size: 14px;">សាលារៀន ព្រះរាជអគ្គមហេសី</div>
+        <div style="font-size:14px;">សាលារៀន ព្រះរាជអគ្គមហេសី</div>
         <div class="line"></div>
         <div class="details">
-          <div>ឈ្មោះសិស្ស: <b>${s[0] ?? ""}</b></div>
-          <div>ភេទ: <b>${s[1] ?? ""}</b></div>
-          <div>ថ្នាក់សិក្សា: <b>${s[2] ?? ""}</b></div>
-          <div>គ្រូបង្រៀន: <b>${s[3] ?? ""}</b></div>
-          <div>តម្លៃសិក្សា: <span class="price">${s[4] ?? ""}</span></div>
+          <div>ឈ្មោះសិស្ស: <b>${escapeHtml(s[0] ?? "")}</b></div>
+          <div>ភេទ: <b>${escapeHtml(s[1] ?? "")}</b></div>
+          <div>ថ្នាក់សិក្សា: <b>${escapeHtml(s[2] ?? "")}</b></div>
+          <div>គ្រូបង្រៀន: <b>${escapeHtml(s[3] ?? "")}</b></div>
+          <div>តម្លៃសិក្សា: <span class="price">${escapeHtml(s[4] ?? "")}</span></div>
           <div>កាលបរិច្ឆេទ: <b>${new Date().toLocaleDateString("km-KH")}</b></div>
         </div>
         <div class="line"></div>
         <div class="footer">សូមអរគុណ! ការអប់រំគឺជាទ្រព្យសម្បត្តិដែលមិនអាចកាត់ថ្លៃបាន។</div>
       </div>
-      <script>window.onload = function(){ window.print(); window.close(); }</script>
-    </body>
-    </html>
+      <script>window.onload=function(){window.print();window.close();}</script>
+    </body></html>
   `;
-
   printWindow.document.write(receiptHTML);
   printWindow.document.close();
+}
+
+/* =========================================================
+   CRUD (Admin) + Fee split preview
+========================================================= */
+function updateFeeSplitPreview() {
+  const fee = toNumber($("addFee")?.value);
+  $("disp80").innerText = formatKHR(fee * 0.8);
+  $("disp20").innerText = formatKHR(fee * 0.2);
+}
+
+function openStudentModal() {
+  isEditMode = false;
+  originalName = "";
+
+  $("modalTitle").innerText = "បញ្ចូលសិស្សថ្មី";
+  $("addStudentName").value = "";
+  $("addGender").value = "Male";
+  $("addGrade").value = "";
+  $("addFee").value = "";
+  updateFeeSplitPreview();
+
+  bootstrap.Modal.getOrCreateInstance($("studentModal")).show();
+}
+
+function editStudent(index) {
+  isEditMode = true;
+  const r = allStudents[index];
+  originalName = r?.[0] ?? "";
+
+  $("modalTitle").innerText = "កែប្រែព័ត៌មាន";
+  $("addStudentName").value = r?.[0] ?? "";
+  $("addGender").value = r?.[1] ?? "Male";
+  $("addGrade").value = r?.[2] ?? "";
+  $("addTeacherSelect").value = r?.[3] ?? "";
+
+  const feeValue = String(r?.[4] ?? "").replace(/[^0-9]/g, "");
+  $("addFee").value = feeValue;
+  updateFeeSplitPreview();
+
+  bootstrap.Modal.getOrCreateInstance($("studentModal")).show();
+}
+
+async function submitStudent() {
+  if (currentUserRole !== "Admin") return;
+
+  const name = $("addStudentName").value.trim();
+  const teacher = $("addTeacherSelect").value;
+  const feeNum = toNumber($("addFee").value);
+
+  if (!name || !teacher) {
+    return Swal.fire("Error", "សូមបំពេញឈ្មោះសិស្ស និងជ្រើសរើសគ្រូ", "error");
+  }
+
+  const form = {
+    studentName: name,
+    gender: $("addGender").value,
+    grade: $("addGrade").value,
+    teacherName: teacher,
+    schoolFee: formatKHR(feeNum),
+    teacherFeeVal: formatKHR(feeNum * 0.8),
+    schoolFeeVal: formatKHR(feeNum * 0.2),
+    paymentDate: new Date().toISOString().split("T")[0],
+    startDate: new Date().toISOString().split("T")[0],
+  };
+
+  Swal.fire({ title: "កំពុងរក្សាទុក...", didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+
+  const res = isEditMode
+    ? await callAPI("updateStudentData", originalName, form)
+    : await callAPI("saveStudentToTeacherSheet", form);
+
+  if (res && res.success) {
+    Swal.fire("ជោគជ័យ", res.message || "រក្សាទុកបានសម្រេច", "success");
+    bootstrap.Modal.getOrCreateInstance($("studentModal")).hide();
+    await refreshAll();
+  } else {
+    Swal.fire("Error", res?.message || "រក្សាទុកមិនបានសម្រេច", "error");
+  }
+}
+
+async function confirmDelete(index) {
+  if (currentUserRole !== "Admin") return;
+
+  const name = allStudents[index]?.[0] || "";
+  const teacher = allStudents[index]?.[3] || "";
+
+  Swal.fire({
+    title: "លុបទិន្នន័យ?",
+    text: `តើអ្នកចង់លុបសិស្ស ${name}?`,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#ef4444",
+    confirmButtonText: "បាទ លុបវា!",
+    cancelButtonText: "បោះបង់",
+  }).then(async (result) => {
+    if (!result.isConfirmed) return;
+
+    Swal.fire({ title: "កំពុងលុប...", didOpen: () => Swal.showLoading() });
+    const res = await callAPI("deleteStudentData", name, teacher);
+
+    if (res && res.success) {
+      Swal.fire("Deleted!", res.message || "លុបបានសម្រេច", "success");
+      await refreshAll();
+    } else {
+      Swal.fire("Error", res?.message || "លុបមិនបានសម្រេច", "error");
+    }
+  });
+}
+
+/* =========================================================
+   Core utilities (paginate + sort compare + escape)
+========================================================= */
+function paginate(items, page, perPage) {
+  const totalItems = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+  const p = Math.min(Math.max(1, page), totalPages);
+
+  const start = (p - 1) * perPage;
+  const end = Math.min(start + perPage, totalItems);
+  const pageItems = items.slice(start, end);
+
+  return {
+    pageItems,
+    startIndex: totalItems ? (start + 1) : 0,
+    endIndex: end,
+    totalPages,
+    totalItems,
+  };
+}
+
+function clampPage(page, totalItems, perPage) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+  return Math.min(Math.max(1, page), totalPages);
+}
+
+function compareByKey(a, b, key, dir) {
+  const mul = dir === "asc" ? 1 : -1;
+
+  const va = a[key];
+  const vb = b[key];
+
+  // date
+  if (va instanceof Date || vb instanceof Date) {
+    const ta = va instanceof Date ? va.getTime() : -Infinity;
+    const tb = vb instanceof Date ? vb.getTime() : -Infinity;
+    return (ta - tb) * mul;
+  }
+
+  // number
+  if (typeof va === "number" || typeof vb === "number") {
+    const na = Number(va) || 0;
+    const nb = Number(vb) || 0;
+    return (na - nb) * mul;
+  }
+
+  // string
+  return String(va ?? "").localeCompare(String(vb ?? ""), "km", { sensitivity: "base" }) * mul;
+}
+
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 /* ---------------- Init ---------------- */
 document.addEventListener("DOMContentLoaded", () => {
   $("addFee")?.addEventListener("input", updateFeeSplitPreview);
-
-  // Apply filters on Enter
-  $("searchStudent")?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") applyStudentFilters();
-  });
-
-  // Auto apply when dropdown changes
-  ["filterTeacher", "filterGrade", "filterGender"].forEach(id => {
-    $(id)?.addEventListener("change", applyStudentFilters);
-  });
 });
