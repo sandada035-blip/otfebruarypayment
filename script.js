@@ -9,7 +9,7 @@
  ****************************************************/
 
 const WEB_APP_URL =
-  "https://script.google.com/macros/s/AKfycbyUQTd-0jN_NFayseCd0rLDLZDp9AJuKClvxrS87GRP-J3VsWqfDNRkGwl2QLq4W-vncg/exec";
+  "https://script.google.com/macros/s/AKfycbw7wVdV9cHgrPkuyr-yNZAECY1bRJqg6MhCEWIKqh2TuCmC8bXvWi-pzsB8NmqEgkfydw/exec";
 
 let allStudents = [];
 let studentViewRows = []; // after filter+sort
@@ -1181,3 +1181,4 @@ function escapeHtml(s) {
 document.addEventListener("DOMContentLoaded", () => {
   $("addFee")?.addEventListener("input", updateFeeSplitPreview);
 });
+
