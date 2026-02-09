@@ -11,13 +11,6 @@
 
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-  <style>
-    /* Search icon inline */
-    .search-container { position: relative; }
-    .search-container i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #6c757d; }
-    .search-input { padding-left: 38px !important; }
-  </style>
 </head>
 
 <body>
@@ -69,7 +62,10 @@
       </div>
     </div>
 
-    <div class="d-flex gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <span id="roleBadge" class="pill pill-user">USER</span>
+      <span id="userBadge" class="pill pill-name"><i class="bi bi-person-circle"></i> -</span>
+
       <button class="btn btn-sm btn-light" onclick="showSection('dashboard')"><i class="bi bi-house"></i> Home</button>
       <button class="btn btn-sm btn-light" onclick="showSection('students')"><i class="bi bi-people"></i> Students</button>
       <button class="btn btn-sm btn-outline-danger" onclick="logout()">
@@ -90,16 +86,24 @@
           <div>
             <div class="hero-title">Overview</div>
             <div class="hero-sub">សរុបទិន្នន័យ និងចំណូល (20% សាលា / 80% គ្រូ)</div>
+            <div class="hero-meta">
+              <i class="bi bi-cloud-check"></i>
+              Last sync: <span id="lastSyncDashboard">-</span>
+            </div>
           </div>
         </div>
 
         <div class="d-flex gap-2">
-          <!-- View-only users CAN print -->
           <button class="btn btn-sm btn-dark no-print" onclick="printStudentReportDetailed()">
             <i class="bi bi-printer"></i> Print
           </button>
-          <button class="btn btn-sm btn-outline-primary no-print" onclick="loadDashboard()">
+
+          <button class="btn btn-sm btn-outline-primary no-print" onclick="refreshAll()">
             <i class="bi bi-arrow-repeat"></i> Refresh
+          </button>
+
+          <button class="btn btn-sm btn-outline-secondary no-print" onclick="exportTeacherCSV()">
+            <i class="bi bi-download"></i> Export Teacher CSV
           </button>
         </div>
       </div>
@@ -144,24 +148,89 @@
     STUDENTS
   ========================= -->
   <div id="studentSection" class="container-fluid p-3 page-wrap" style="display:none;">
+    <div class="fb-hero-card mb-3">
+      <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-3">
+          <div class="hero-icon"><i class="bi bi-people"></i></div>
+          <div>
+            <div class="hero-title">Students</div>
+            <div class="hero-sub">Filter / Search / Export (User = View only)</div>
+            <div class="hero-meta">
+              <i class="bi bi-cloud-check"></i>
+              Last sync: <span id="lastSyncStudents">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-sm btn-outline-dark" onclick="printStudentReportDetailed()">
+            <i class="bi bi-printer"></i> Print
+          </button>
+
+          <button class="btn btn-sm btn-outline-secondary" onclick="exportStudentCSV()">
+            <i class="bi bi-download"></i> Export Student CSV
+          </button>
+
+          <button class="btn btn-sm btn-primary admin-only" onclick="openStudentModal()">
+            <i class="bi bi-plus-lg"></i> Add New
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Student quick stats (based on filter) -->
+    <div id="studentStatsRow" class="stats-grid"></div>
+
     <div class="content-box">
       <div class="p-3 border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2 no-print">
         <h5 class="fw-bold m-0">Student Records</h5>
 
-        <div class="d-flex gap-2 align-items-center">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
           <div class="search-container">
             <i class="bi bi-search"></i>
             <input type="text" id="searchStudent" class="form-control form-control-sm search-input"
-              placeholder="ស្វែងរកឈ្មោះសិស្ស..." onkeyup="filterStudents()" />
+              placeholder="ស្វែងរកឈ្មោះសិស្ស / គ្រូ..." />
           </div>
 
-          <!-- View-only users CAN print -->
-          <button class="btn btn-outline-dark btn-sm" onclick="printStudentReportDetailed()">
-            <i class="bi bi-printer"></i> Print
+          <button class="btn btn-sm btn-outline-primary" onclick="applyStudentFilters()">
+            <i class="bi bi-funnel"></i> Apply
           </button>
 
-          <!-- Admin only -->
-          <button class="btn btn-primary btn-sm admin-only" onclick="openStudentModal()">+ Add New</button>
+          <button class="btn btn-sm btn-light" onclick="clearStudentFilters()">
+            <i class="bi bi-x-circle"></i> Clear
+          </button>
+        </div>
+      </div>
+
+      <!-- Filters row -->
+      <div class="p-3 border-bottom bg-soft">
+        <div class="row g-2">
+          <div class="col-12 col-md-4">
+            <div class="form-floating">
+              <select id="filterTeacher" class="form-select"></select>
+              <label><i class="bi bi-person-video3"></i> គ្រូ</label>
+            </div>
+          </div>
+
+          <div class="col-6 col-md-4">
+            <div class="form-floating">
+              <select id="filterGrade" class="form-select"></select>
+              <label><i class="bi bi-mortarboard"></i> ថ្នាក់</label>
+            </div>
+          </div>
+
+          <div class="col-6 col-md-4">
+            <div class="form-floating">
+              <select id="filterGender" class="form-select">
+                <option value="ALL">All</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="ប្រុស">ប្រុស</option>
+                <option value="ស្រី">ស្រី</option>
+              </select>
+              <label><i class="bi bi-gender-ambiguous"></i> ភេទ</label>
+            </div>
+          </div>
         </div>
       </div>
 
