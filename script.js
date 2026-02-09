@@ -1181,3 +1181,31 @@ function escapeHtml(s) {
 document.addEventListener("DOMContentLoaded", () => {
   $("addFee")?.addEventListener("input", updateFeeSplitPreview);
 });
+
+function populateTeacherSelect() {
+  const sel = document.getElementById("addTeacherSelect");
+  if (!sel) return;
+
+  // 1) Try from teacherRows (Teacher Summary)
+  let teachers = [];
+  if (Array.isArray(teacherRows) && teacherRows.length) {
+    teachers = teacherRows
+      .map(r => String(r[0] ?? "").trim())
+      .filter(Boolean);
+  }
+
+  // 2) Fallback: unique teachers from allStudents (column r[3])
+  if (!teachers.length && Array.isArray(allStudents) && allStudents.length) {
+    const set = new Set(
+      allStudents.map(r => String(r[3] ?? "").trim()).filter(Boolean)
+    );
+    teachers = Array.from(set);
+  }
+
+  // sort Khmer-friendly
+  teachers.sort((a, b) => a.localeCompare(b, "km", { sensitivity: "base" }));
+
+  // Build options
+  sel.innerHTML = `<option value="" disabled selected>ជ្រើសរើសគ្រូ</option>` +
+    teachers.map(t => `<option value="${escapeHtml(t)}">${t}</option>`).join("");
+}
