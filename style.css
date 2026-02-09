@@ -1,193 +1,285 @@
-:root{
-  --bg: #f2f3f5;
+:root {
+  --primary: #4361ee;
+  --secondary: #3f37c9;
+  --success: #4cc9f0;
+  --danger: #ef4444;
+
+  --bg-body: #f8f9fa;
   --card: #ffffff;
   --text: #0f172a;
   --muted: #64748b;
-  --border: rgba(15, 23, 42, 0.08);
-  --shadow: 0 12px 30px rgba(15, 23, 42, 0.10);
-  --shadow2: 0 8px 18px rgba(15, 23, 42, 0.08);
-  --radius: 18px;
+  --border: rgba(15, 23, 42, 0.10);
+
+  --radius: 16px;
+  --shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+  --shadow-soft: 0 6px 16px rgba(15, 23, 42, 0.06);
+
+  --font-khmer: "Noto Serif Khmer", "Khmer OS Siemreap", serif;
+  --font-ui: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
+/* =========================
+   Base
+========================= */
 html, body { height: 100%; }
-body{
-  background: var(--bg);
+body {
+  font-family: var(--font-ui);
+  background: var(--bg-body);
   color: var(--text);
-  font-family: Inter, "Noto Serif Khmer", "Khmer OS Siemreap", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Login background */
-.login-bg{
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-.login-card{
-  width: 100%;
-  max-width: 420px;
-  border: none;
+/* Khmer font for UI elements */
+.fw-bold, .form-select, .form-control, label, table, h1,h2,h3,h4,h5,h6, .btn {
+  font-family: var(--font-khmer);
 }
 
-/* Navbar */
-.app-navbar{
-  border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(10px);
-}
-.app-badge{
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  background: #eef2ff;
-  color: #1d4ed8;
-}
+/* Smooth scrolling like apps */
+* { scroll-behavior: smooth; }
 
-/* Page wrap */
+/* =========================
+   Navbar / Page layout (optional helpers)
+========================= */
 .page-wrap{
   max-width: 1200px;
   margin: 0 auto;
 }
 
-/* Facebook-like hero card */
-.fb-hero-card{
+/* =========================
+   Content box (Facebook card style)
+========================= */
+.content-box {
   background: var(--card);
-  border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow2);
-  padding: 14px 16px;
-}
-.hero-icon{
-  width: 52px;
-  height: 52px;
-  border-radius: 18px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
-  color: #fff;
-  font-size: 22px;
-}
-.hero-title{
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: .2px;
-}
-.hero-sub{
-  color: var(--muted);
-  font-size: 13px;
-}
-
-/* Stats cards grid (Facebook style) */
-.stats-grid{
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 12px;
-}
-
-/* each card spans columns */
-.stat-card{
-  background: var(--card);
+  box-shadow: var(--shadow-soft);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow2);
-  padding: 14px 14px;
   overflow: hidden;
-  position: relative;
-  min-height: 110px;
+  margin-bottom: 1.25rem;
 }
 
-.stat-card .top{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap: 10px;
+/* =========================
+   Login Styles
+========================= */
+#loginSection {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.login-container {
+  max-width: 450px;
+  width: 100%;
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  animation: fadeIn 0.8s ease-out;
+}
+
+.login-logo {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+}
+
+.card-title { color: #0d6efd; }
+
+.form-control {
+  border-radius: 10px;
+  padding: 10px 14px;
+  border: 1px solid #ced4da;
+}
+
+.form-control:focus {
+  border-color: #86b7fe;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.20);
+}
+
+.btn-primary {
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+  border-radius: 10px;
+  padding: 12px 18px;
+  font-size: 1.05rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.btn-primary:hover {
+  background-color: #0b5ed7;
+  border-color: #0a58ca;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(13, 110, 253, 0.18);
+}
+.btn-primary:active { transform: translateY(0); }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* =========================
+   Dashboard Stat Cards (Facebook-like)
+========================= */
+.stat-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.1rem;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::after{
+  content:"";
+  position:absolute;
+  right:-40px;
+  top:-40px;
+  width:120px;
+  height:120px;
+  border-radius:50%;
+  background: rgba(67, 97, 238, 0.08);
 }
 
 .stat-card .label{
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 .stat-card .value{
-  font-size: 22px;
+  font-size: 1.35rem;
   font-weight: 900;
-  margin-top: 6px;
   letter-spacing: .2px;
+  margin-top: 6px;
 }
 .stat-card .sub{
-  margin-top: 8px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.80rem;
+  margin-top: 8px;
 }
 
-.stat-icon{
-  width: 42px;
-  height: 42px;
-  border-radius: 16px;
-  display:grid;
-  place-items:center;
-  font-size: 18px;
-  color:#fff;
+/* Optional: left accent bar styles */
+.stat-accent-primary{ border-left: 5px solid var(--primary); }
+.stat-accent-danger { border-left: 5px solid var(--danger); }
+.stat-accent-success{ border-left: 5px solid #22c55e; }
+.stat-accent-purple { border-left: 5px solid #8b5cf6; }
+
+/* =========================
+   Search input
+========================= */
+.search-input {
+  border-radius: 10px;
 }
 
-.bg-total{ background: linear-gradient(135deg, #0ea5e9, #2563eb); }
-.bg-school{ background: linear-gradient(135deg, #ef4444, #f97316); }
-.bg-teacher{ background: linear-gradient(135deg, #10b981, #22c55e); }
-.bg-students{ background: linear-gradient(135deg, #8b5cf6, #6366f1); }
-
-/* desktop spans */
-.stat-span-6{ grid-column: span 6; }
-.stat-span-4{ grid-column: span 4; }
-.stat-span-3{ grid-column: span 3; }
-
-/* Content box */
-.content-box{
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow2);
-  overflow: hidden;
+/* =========================
+   FAB Button (single definition - fixed)
+========================= */
+.fab-btn {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  box-shadow: 0 12px 22px rgba(67, 97, 238, 0.35);
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  transition: transform 0.15s ease;
 }
+.fab-btn:active { transform: scale(0.92); }
 
+/* =========================
+   Tables (mobile-friendly)
+========================= */
 .table thead th{
-  font-weight: 800;
+  font-weight: 900;
 }
+
 .table td, .table th{
   vertical-align: middle;
   white-space: nowrap;
 }
 
-/* Floating action button */
-.fab-btn{
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  width: 56px;
-  height: 56px;
-  border: none;
-  border-radius: 18px;
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
-  color: #fff;
-  font-size: 22px;
-  box-shadow: var(--shadow);
-  display: grid;
-  place-items:center;
-  z-index: 1000;
-}
-.fab-btn:active{ transform: scale(0.98); }
+/* =========================
+   Mobile
+========================= */
+@media (max-width: 576px) {
+  .search-input { width: 160px; }
 
-/* Khmer heading */
-.kh-title{ font-family: "Khmer OS Muol Light", "Noto Serif Khmer", serif; }
+  .stat-card { padding: 0.95rem; }
+  .stat-card .value { font-size: 1.2rem; }
 
-/* Responsive */
-@media (max-width: 992px){
-  .stat-span-6{ grid-column: span 12; }
-  .stat-span-4{ grid-column: span 6; }
-  .stat-span-3{ grid-column: span 6; }
-  .table td, .table th{ white-space: nowrap; }
+  .table {
+    font-size: 0.85rem;
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .d-none-mobile { display: none !important; }
 }
 
-@media (max-width: 576px){
-  .stat-span-4, .stat-span-3{ grid-column: span 12; }
-  .hero-icon{ width: 46px; height: 46px; border-radius: 16px; }
-  .stat-card{ min-height: 104px; }
-  .stat-card .value{ font-size: 20px; }
+/* =========================
+   Action buttons in table
+========================= */
+.btn-group .btn {
+  border-radius: 10px;
+  margin: 0 2px;
+  padding: 4px 8px;
+}
+
+/* =========================
+   Print View (clean + clear)
+========================= */
+@media print {
+  .app-navbar, .fab-btn, .btn, .no-print, #loginSection {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    padding: 0;
+    margin: 0;
+  }
+
+  .container-fluid {
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .content-box {
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+  }
+
+  .table {
+    width: 100% !important;
+    border: 1px solid #000 !important;
+    font-size: 10pt !important;
+  }
+
+  .table th, .table td {
+    border: 1px solid #000 !important;
+    padding: 8px !important;
+    color: #000 !important;
+  }
+
+  .print-header {
+    display: block !important;
+    text-align: center;
+    margin-bottom: 18px;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }
