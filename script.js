@@ -1,10 +1,7 @@
 /****************************************************
- * School Admin Pro - script.js (CLEAN + STABLE)
- * - Login (checkLogin)
- * - Dashboard (getTeacherData) -> cards + teacher table
- * - Students (getStudentData) -> table + admin actions
- * - CRUD (saveStudentToTeacherSheet / updateStudentData / deleteStudentData)
- * - Print: printPage / printStudentReportDetailed / printReceipt
+ * School Admin Pro - script.js (FULL)
+ * - User: view-only (Dashboard + Students + Print)
+ * - Admin: add/edit/delete + print
  ****************************************************/
 
 const WEB_APP_URL =
@@ -19,9 +16,7 @@ let originalName = "";
 /* =========================
    Helpers
 ========================= */
-function $(id) {
-  return document.getElementById(id);
-}
+function $(id) { return document.getElementById(id); }
 
 function toNumber(val) {
   const s = String(val ?? "").replace(/[^\d.-]/g, "");
@@ -38,9 +33,7 @@ function formatKHR(n) {
    API Core
 ========================= */
 async function callAPI(funcName, ...args) {
-  const url = `${WEB_APP_URL}?func=${funcName}&args=${encodeURIComponent(
-    JSON.stringify(args)
-  )}`;
+  const url = `${WEB_APP_URL}?func=${funcName}&args=${encodeURIComponent(JSON.stringify(args))}`;
   try {
     const response = await fetch(url);
     return await response.json();
@@ -118,12 +111,36 @@ function logout() {
   });
 }
 
+/* User permissions:
+   - Admin: can add/edit/delete
+   - User: view-only (still can print) */
 function applyPermissions() {
-  // Elements with class .admin-only will show only for Admin
-  const adminEls = document.querySelectorAll(".admin-only");
-  adminEls.forEach((el) => {
-    el.style.display = currentUserRole === "Admin" ? "" : "none";
+  const isAdmin = currentUserRole === "Admin";
+
+  // Hide admin-only elements (Add New, FAB, Save button)
+  document.querySelectorAll(".admin-only").forEach((el) => {
+    el.style.display = isAdmin ? "" : "none";
   });
+
+  // Show note inside modal if user (extra safety)
+  const note = document.querySelector(".user-note");
+  if (note) note.classList.toggle("d-none", isAdmin);
+
+  // Extra protection: block modal open/save for user
+  if (!isAdmin) {
+    window.openStudentModal = function () {
+      Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
+    };
+    window.editStudent = function () {
+      Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
+    };
+    window.confirmDelete = function () {
+      Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
+    };
+    window.submitStudent = function () {
+      Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
+    };
+  }
 }
 
 /* =========================
@@ -141,73 +158,64 @@ function showSection(section) {
    Search Filters
 ========================= */
 function filterTeachers() {
-  const input = $("searchTeacher");
-  const filter = (input?.value || "").toLowerCase();
-
-  const table = $("teacherTable");
-  const tr = table?.getElementsByTagName("tr") || [];
+  const filter = ($("searchTeacher")?.value || "").toLowerCase();
+  const tr = $("teacherTable")?.getElementsByTagName("tr") || [];
 
   for (let i = 1; i < tr.length; i++) {
-    const td = tr[i].getElementsByTagName("td")[0]; // Teacher name
+    const td = tr[i].getElementsByTagName("td")[0];
     if (!td) continue;
-
-    const txtValue = (td.textContent || td.innerText || "").toLowerCase();
-    tr[i].style.display = txtValue.includes(filter) ? "" : "none";
+    const txt = (td.textContent || td.innerText || "").toLowerCase();
+    tr[i].style.display = txt.includes(filter) ? "" : "none";
   }
 }
 
 function filterStudents() {
-  const input = $("searchStudent");
-  const filter = (input?.value || "").toLowerCase();
-
-  const table = $("studentTable");
-  const tr = table?.getElementsByTagName("tr") || [];
+  const filter = ($("searchStudent")?.value || "").toLowerCase();
+  const tr = $("studentTable")?.getElementsByTagName("tr") || [];
 
   for (let i = 1; i < tr.length; i++) {
-    const tdName = tr[i].getElementsByTagName("td")[0]; // student name
-    const tdTeacher = tr[i].getElementsByTagName("td")[3]; // teacher
+    const tdName = tr[i].getElementsByTagName("td")[0];
+    const tdTeacher = tr[i].getElementsByTagName("td")[3];
     if (!tdName) continue;
 
-    const nameValue = (tdName.textContent || tdName.innerText || "").toLowerCase();
-    const teacherValue = (tdTeacher?.textContent || tdTeacher?.innerText || "").toLowerCase();
+    const nameV = (tdName.textContent || tdName.innerText || "").toLowerCase();
+    const teachV = (tdTeacher?.textContent || tdTeacher?.innerText || "").toLowerCase();
 
-    tr[i].style.display = nameValue.includes(filter) || teacherValue.includes(filter) ? "" : "none";
+    tr[i].style.display = nameV.includes(filter) || teachV.includes(filter) ? "" : "none";
   }
 }
 
 /* =========================
-   Dashboard (Teacher Summary + Cards)
+   Dashboard
 ========================= */
-function renderStatsCards({ totalStudents, totalFee, teacher80, school20 }) {
-  // You can keep Bootstrap row/col OR your custom stats-grid.
-  // This version keeps your existing Bootstrap structure.
+function renderStatsCards({ totalTeachers, totalStudents, totalFee, teacher80, school20 }) {
   $("statsRow").innerHTML = `
-    <div class="col-6 col-md-3">
-      <div class="stat-card stat-accent-success">
-        <small class="text-muted">សិស្សសរុប</small>
-        <div class="h4 mb-0">${Number(totalStudents || 0).toLocaleString("en-US")}</div>
-      </div>
+    <div class="stat-card accent-purple">
+      <div class="label">គ្រូសរុប</div>
+      <div class="value">${(Number(totalTeachers)||0).toLocaleString("en-US")}</div>
+      <div class="sub">ចំនួនគ្រូទាំងអស់</div>
     </div>
 
-    <div class="col-6 col-md-3">
-      <div class="stat-card stat-accent-primary">
-        <small class="text-muted">ទឹកប្រាក់សរុប</small>
-        <div class="h4 mb-0 text-success">${formatKHR(totalFee)}</div>
-      </div>
+    <div class="stat-card accent-green">
+      <div class="label">សិស្សសរុប</div>
+      <div class="value">${(Number(totalStudents)||0).toLocaleString("en-US")}</div>
+      <div class="sub">គណនាពី Teacher Summary</div>
     </div>
 
-    <div class="col-6 col-md-3">
-      <div class="stat-card stat-accent-danger">
-        <small class="text-muted">សាលា (20%)</small>
-        <div class="h4 mb-0 text-danger">${formatKHR(school20)}</div>
-      </div>
+    <div class="stat-card accent-blue">
+      <div class="label">ទឹកប្រាក់សរុប</div>
+      <div class="value" style="color:#16a34a">${formatKHR(totalFee)}</div>
+      <div class="sub">ចំណូលសរុបទាំងអស់</div>
     </div>
 
-    <div class="col-6 col-md-3">
-      <div class="stat-card stat-accent-success">
-        <small class="text-muted">គ្រូ (80%)</small>
-        <div class="h4 mb-0 text-primary">${formatKHR(teacher80)}</div>
+    <div class="stat-card accent-red">
+      <div class="label">សាលា (20%) / គ្រូ (80%)</div>
+      <div class="value" style="font-size:18px; line-height:1.2">
+        <span style="color:#ef4444">${formatKHR(school20)}</span>
+        <span style="color:#94a3b8"> • </span>
+        <span style="color:#2563eb">${formatKHR(teacher80)}</span>
       </div>
+      <div class="sub">បែងចែក 20% និង 80%</div>
     </div>
   `;
 }
@@ -230,40 +238,41 @@ async function loadDashboard() {
     school20 += toNumber(r[5]);
   });
 
-  // fallback if api doesn't send 80/20 as numeric
+  // fallback if API returns only totalFee
   if ((teacher80 === 0 && school20 === 0) && totalFee > 0) {
     teacher80 = totalFee * 0.8;
     school20 = totalFee * 0.2;
   }
 
-  renderStatsCards({ totalStudents, totalFee, teacher80, school20 });
+  renderStatsCards({
+    totalTeachers: res.rows.length,
+    totalStudents,
+    totalFee,
+    teacher80,
+    school20
+  });
 
-  $("teacherBody").innerHTML = res.rows
-    .map(
-      (r) => `
-      <tr>
-        <td>${r[0] ?? ""}</td>
-        <td>${r[1] ?? ""}</td>
-        <td>${r[2] ?? 0}</td>
-        <td class="fw-bold text-primary">${r[3] ?? ""}</td>
-        <td class="text-success">${r[4] ?? ""}</td>
-        <td class="text-danger">${r[5] ?? ""}</td>
-      </tr>
-    `
-    )
-    .join("");
+  $("teacherBody").innerHTML = res.rows.map(r => `
+    <tr>
+      <td>${r[0] ?? ""}</td>
+      <td>${r[1] ?? ""}</td>
+      <td>${r[2] ?? 0}</td>
+      <td class="fw-bold text-primary">${r[3] ?? ""}</td>
+      <td class="text-success">${r[4] ?? ""}</td>
+      <td class="text-danger">${r[5] ?? ""}</td>
+    </tr>
+  `).join("");
 }
 
 /* =========================
    Students
 ========================= */
 async function loadStudents() {
-  const loading = $("studentLoading");
-  loading?.classList.remove("d-none");
+  $("studentLoading")?.classList.remove("d-none");
 
   const res = await callAPI("getStudentData");
 
-  loading?.classList.add("d-none");
+  $("studentLoading")?.classList.add("d-none");
   if (!res || !Array.isArray(res.rows)) return;
 
   allStudents = res.rows;
@@ -271,51 +280,45 @@ async function loadStudents() {
 }
 
 function renderStudentTable(rows) {
-  $("studentBody").innerHTML = rows
-    .map((r, i) => {
-      const canEdit = currentUserRole === "Admin";
-      return `
-        <tr>
-          <td class="fw-bold text-primary">${r[0] ?? ""}</td>
-          <td class="d-none d-md-table-cell">${r[1] ?? ""}</td>
-          <td class="d-none d-md-table-cell">${r[2] ?? ""}</td>
-          <td>${r[3] ?? ""}</td>
-          <td class="text-success small fw-bold">${r[4] ?? ""}</td>
-          <td>
-            <div class="btn-group">
-              <button class="btn btn-sm btn-outline-info" title="វិក្កយបត្រ" onclick="printReceipt(${i})">
-                <i class="bi bi-printer"></i>
-              </button>
+  const isAdmin = currentUserRole === "Admin";
 
-              ${
-                canEdit
-                  ? `
-                <button class="btn btn-sm btn-outline-warning" title="កែប្រែ" onclick="editStudent(${i})">
-                  <i class="bi bi-pencil"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-danger" title="លុប" onclick="confirmDelete(${i})">
-                  <i class="bi bi-trash"></i>
-                </button>
-              `
-                  : ""
-              }
-            </div>
-          </td>
-        </tr>
-      `;
-    })
-    .join("");
+  $("studentBody").innerHTML = rows.map((r, i) => `
+    <tr>
+      <td class="fw-bold text-primary">${r[0] ?? ""}</td>
+      <td class="d-none d-md-table-cell">${r[1] ?? ""}</td>
+      <td class="d-none d-md-table-cell">${r[2] ?? ""}</td>
+      <td>${r[3] ?? ""}</td>
+      <td class="text-success small fw-bold">${r[4] ?? ""}</td>
+      <td>
+        <div class="btn-group">
+          <!-- View-only user can print receipt -->
+          <button class="btn btn-sm btn-outline-info" title="វិក្កយបត្រ" onclick="printReceipt(${i})">
+            <i class="bi bi-printer"></i>
+          </button>
+
+          ${
+            isAdmin ? `
+              <button class="btn btn-sm btn-outline-warning" title="កែប្រែ" onclick="editStudent(${i})">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-danger" title="លុប" onclick="confirmDelete(${i})">
+                <i class="bi bi-trash"></i>
+              </button>
+            ` : ""
+          }
+        </div>
+      </td>
+    </tr>
+  `).join("");
 }
 
 /* =========================
-   Modal + Fee Split Preview
+   Modal + Fee split preview
 ========================= */
 function updateFeeSplitPreview() {
   const fee = toNumber($("addFee")?.value);
-  const t80 = fee * 0.8;
-  const s20 = fee * 0.2;
-  if ($("disp80")) $("disp80").innerText = formatKHR(t80);
-  if ($("disp20")) $("disp20").innerText = formatKHR(s20);
+  $("disp80").innerText = formatKHR(fee * 0.8);
+  $("disp20").innerText = formatKHR(fee * 0.2);
 }
 
 function openStudentModal() {
@@ -335,7 +338,6 @@ function openStudentModal() {
 function editStudent(index) {
   isEditMode = true;
   const r = allStudents[index];
-
   originalName = r[0] ?? "";
 
   $("modalTitle").innerText = "កែប្រែព័ត៌មាន";
@@ -343,17 +345,22 @@ function editStudent(index) {
   $("addGender").value = r[1] ?? "Male";
   $("addGrade").value = r[2] ?? "";
   $("addTeacherSelect").value = r[3] ?? "";
+
   const feeValue = String(r[4] ?? "").replace(/[^0-9]/g, "");
   $("addFee").value = feeValue;
-
   updateFeeSplitPreview();
+
   bootstrap.Modal.getOrCreateInstance($("studentModal")).show();
 }
 
 /* =========================
-   CRUD
+   CRUD (Admin)
 ========================= */
 async function submitStudent() {
+  if (currentUserRole !== "Admin") {
+    return Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
+  }
+
   const name = $("addStudentName").value.trim();
   const teacher = $("addTeacherSelect").value;
   const feeNum = toNumber($("addFee").value);
@@ -371,13 +378,13 @@ async function submitStudent() {
     teacherFeeVal: formatKHR(feeNum * 0.8),
     schoolFeeVal: formatKHR(feeNum * 0.2),
     paymentDate: new Date().toISOString().split("T")[0],
-    startDate: new Date().toISOString().split("T")[0],
+    startDate: new Date().toISOString().split("T")[0]
   };
 
   Swal.fire({
     title: "កំពុងរក្សាទុក...",
     didOpen: () => Swal.showLoading(),
-    allowOutsideClick: false,
+    allowOutsideClick: false
   });
 
   const res = isEditMode
@@ -388,14 +395,16 @@ async function submitStudent() {
     Swal.fire("ជោគជ័យ", res.message || "រក្សាទុកបានសម្រេច", "success");
     bootstrap.Modal.getOrCreateInstance($("studentModal")).hide();
     await loadStudents();
-    await loadDashboard(); // refresh summary too
+    await loadDashboard();
   } else {
     Swal.fire("Error", res?.message || "រក្សាទុកមិនបានសម្រេច", "error");
   }
 }
 
 async function confirmDelete(index) {
-  if (currentUserRole !== "Admin") return;
+  if (currentUserRole !== "Admin") {
+    return Swal.fire("Permission", "User អាចមើលបានតែប៉ុណ្ណោះ។", "info");
+  }
 
   const name = allStudents[index]?.[0] || "";
   const teacher = allStudents[index]?.[3] || "";
@@ -425,15 +434,8 @@ async function confirmDelete(index) {
 }
 
 /* =========================
-   Print
+   Print: Detailed report
 ========================= */
-
-// 1) Print current page (use your @media print CSS)
-function printPage() {
-  window.print();
-}
-
-// 2) Print detailed student report in new window (Landscape)
 function printStudentReportDetailed() {
   const printWindow = window.open("", "", "height=900,width=1100");
 
@@ -441,33 +443,31 @@ function printStudentReportDetailed() {
   const totalFemale = allStudents.filter((s) => s[1] === "Female" || s[1] === "ស្រី").length;
 
   let totalFee = 0;
-  const tableRows = allStudents
-    .map((r) => {
-      const feeNum = toNumber(r[4]);
-      totalFee += feeNum;
+  const tableRows = allStudents.map((r) => {
+    const feeNum = toNumber(r[4]);
+    totalFee += feeNum;
 
-      const teacherPart = feeNum * 0.8;
-      const schoolPart = feeNum * 0.2;
+    const teacherPart = feeNum * 0.8;
+    const schoolPart = feeNum * 0.2;
 
-      let payDate = r[7]; // adjust if your sheet uses another index
-      if (!payDate || String(payDate).includes("KHR")) {
-        payDate = new Date().toLocaleDateString("km-KH");
-      }
+    let payDate = r[7];
+    if (!payDate || String(payDate).includes("KHR")) {
+      payDate = new Date().toLocaleDateString("km-KH");
+    }
 
-      return `
-        <tr>
-          <td style="border:1px solid #000;padding:6px;text-align:left;">${r[0] ?? ""}</td>
-          <td style="border:1px solid #000;padding:6px;text-align:center;">${r[1] ?? ""}</td>
-          <td style="border:1px solid #000;padding:6px;text-align:center;">${r[2] ?? ""}</td>
-          <td style="border:1px solid #000;padding:6px;text-align:left;">${r[3] ?? ""}</td>
-          <td style="border:1px solid #000;padding:6px;text-align:right;font-weight:bold;">${feeNum.toLocaleString()} ៛</td>
-          <td style="border:1px solid #000;padding:6px;text-align:right;color:#0d6efd;">${teacherPart.toLocaleString()} ៛</td>
-          <td style="border:1px solid #000;padding:6px;text-align:right;color:#dc3545;">${schoolPart.toLocaleString()} ៛</td>
-          <td style="border:1px solid #000;padding:6px;text-align:center;">${payDate}</td>
-        </tr>
-      `;
-    })
-    .join("");
+    return `
+      <tr>
+        <td style="border:1px solid #000;padding:6px;text-align:left;">${r[0] ?? ""}</td>
+        <td style="border:1px solid #000;padding:6px;text-align:center;">${r[1] ?? ""}</td>
+        <td style="border:1px solid #000;padding:6px;text-align:center;">${r[2] ?? ""}</td>
+        <td style="border:1px solid #000;padding:6px;text-align:left;">${r[3] ?? ""}</td>
+        <td style="border:1px solid #000;padding:6px;text-align:right;font-weight:bold;">${feeNum.toLocaleString()} ៛</td>
+        <td style="border:1px solid #000;padding:6px;text-align:right;color:#0d6efd;">${teacherPart.toLocaleString()} ៛</td>
+        <td style="border:1px solid #000;padding:6px;text-align:right;color:#dc3545;">${schoolPart.toLocaleString()} ៛</td>
+        <td style="border:1px solid #000;padding:6px;text-align:center;">${payDate}</td>
+      </tr>
+    `;
+  }).join("");
 
   const fee80 = totalFee * 0.8;
   const fee20 = totalFee * 0.2;
@@ -574,7 +574,9 @@ function printStudentReportDetailed() {
   printWindow.document.close();
 }
 
-// 3) Print receipt per student
+/* =========================
+   Print receipt per student
+========================= */
 function printReceipt(index) {
   const s = allStudents[index];
   if (!s) return;
@@ -624,6 +626,9 @@ function printReceipt(index) {
    Init
 ========================= */
 document.addEventListener("DOMContentLoaded", () => {
-  // Update 80/20 preview when typing fee
-  $("addFee")?.addEventListener("input", updateFeeSplitPreview);
+  $("addFee")?.addEventListener("input", () => {
+    const fee = toNumber($("addFee").value);
+    $("disp80").innerText = formatKHR(fee * 0.8);
+    $("disp20").innerText = formatKHR(fee * 0.2);
+  });
 });
