@@ -1182,3 +1182,4 @@ document.addEventListener("DOMContentLoaded", () => {
   $("addFee")?.addEventListener("input", updateFeeSplitPreview);
 });
 
+
